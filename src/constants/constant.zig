@@ -35,7 +35,7 @@ pub fn ConstantFromQuantity(comptime quantity_type: type) type {
 test "ConstantFromQuantity" {
     const q_type = Quantity(f64, u.m);
     const constant_type: type = ConstantFromQuantity(q_type);
-    for (@typeInfo(constant_type).@"struct".fields) |field| {
+    inline for (@typeInfo(constant_type).@"struct".fields) |field| {
         if (std.mem.eql(u8, "quantity", field.name)) {
             try testing.expect(field.type == q_type);
         }
