@@ -11,7 +11,7 @@ const SymbolExpression = @import("symbol.zig").SymbolExpression;
 const FractionError = fraction.FractionError;
 const Fraction = fraction.Fraction;
 
-pub const UNITLESS: Unit = .init(Dim.initDimensionless(), 1.0, "");
+pub const UNITLESS: Unit = .init(Dim.initDimensionless(), 1.0, .initUniqueSymbol(""));
 
 pub const Unit = struct {
     const Self = @This();
