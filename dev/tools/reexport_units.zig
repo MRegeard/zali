@@ -3,8 +3,12 @@ const aztro = @import("aztro");
 const u = aztro.units;
 const si = u.si;
 const cgs = u.cgs;
+const imperial = u.imperial;
+const photometric = u.photometric;
+const misc = u.misc;
+const astrophys = u.astrophys;
 
-const mods = .{ si, cgs };
+const mods = .{ si, cgs, photometric, astrophys, misc, imperial };
 
 const file_path = "src/units.zig";
 
