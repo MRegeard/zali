@@ -1539,5 +1539,6 @@ pub const vox = ustore.vox;
 // EXPORT ANCHOR END
 
 test {
+    @setEvalBranchQuota(2000);
     testing.refAllDecls(@This());
 }
