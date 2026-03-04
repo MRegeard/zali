@@ -89,13 +89,16 @@ pub const SymbolExpression = struct {
 
     pub fn initUniqueSymbol(comptime symbol: []const u8) Self {
         var result = Self{};
+        if (symbol.len == 0) return Self{};
         result.len = 1;
         result.terms[0] = SymbolTerm.initSymbol(symbol);
         return result;
     }
 
     pub fn initFromString(comptime string: []const u8) !Self {
-        if (string.len == 0) @panic("Implement/check Unitless edge case");
+        if (string.len == 0) {
+            return Self{};
+        }
         var terms: [8]SymbolTerm = undefined;
         var split_it = std.mem.splitScalar(u8, string, ' ');
         var term_counter: usize = 0;
