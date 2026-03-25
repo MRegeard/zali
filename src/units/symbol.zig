@@ -72,6 +72,9 @@ pub const SymbolTerm = struct {
 };
 
 pub const SymbolExpression = struct {
+    // TODO: Impose an ordering scheme at init such that what ever the input/operation by the user,
+    // the symbols are always in the same state for a given unit. This matters for type check:
+    // A * s should be equivalant to s * A and therefore compatible as a Unit type in Quantity.
     const Self = @This();
 
     len: usize = 0,
