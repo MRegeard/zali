@@ -6,14 +6,13 @@ const si = units.si;
 const cgs = units.cgs;
 const astrophys = units.astrophys;
 const misc = units.misc;
-const imperial = units.imperial;
 const photometric = units.photometric;
 const prefix_table = @import("prefix_table.zig");
 const UnitPrefixPair = prefix_table.UnitPrefixPair;
 
 const UPP = prefix_table.UPP;
 
-const mods = .{ si, cgs, photometric, astrophys, misc, imperial };
+const mods = .{ si, cgs, photometric, astrophys, misc };
 
 const file_path = "src/units/units_storage.zig";
 
@@ -26,7 +25,6 @@ const imports: []const u8 =
     \\const cgs = @import("cgs.zig");
     \\const astrophys = @import("astrophys.zig");
     \\const misc = @import("misc.zig");
-    \\const imperial = @import("imperial.zig");
     \\const photometric = @import("photometric.zig");
     \\
 ;

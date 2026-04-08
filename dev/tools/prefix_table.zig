@@ -84,8 +84,6 @@ pub const UPP = [_]UnitPrefixPair{
 
     // Photometric
     .init(pm.mgy, ap_ptr),
-
-    // Imperial
 };
 
 pub const UnitPrefixPair = struct {
