@@ -9,7 +9,6 @@ const si = @import("si.zig");
 const cgs = @import("cgs.zig");
 const astrophys = @import("astrophys.zig");
 const misc = @import("misc.zig");
-const imperial = @import("imperial.zig");
 const photometric = @import("photometric.zig");
 
 
@@ -1749,8 +1748,4 @@ pub const pix = misc.pix;
 
 // vox
 pub const vox = misc.vox;
-
-//////////////////////////////////////////////////////
-// IMPERIAL
-//////////////////////////////////////////////////////
 
