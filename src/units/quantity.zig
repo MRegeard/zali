@@ -6,6 +6,9 @@ const Unit = @import("unit.zig").Unit;
 const System = @import("system.zig").System;
 const si = @import("si.zig");
 const zatest = @import("../test.zig");
+const equivalency_mod = @import("equivalencies.zig");
+const ConversionError = equivalency_mod.ConversionError;
+const Equivalency = equivalency_mod.Equivalency;
 
 pub const QuantityChildType = enum {
     int,
@@ -34,7 +37,7 @@ pub fn isQuantity(quantity: anytype) bool {
     return true;
 }
 
-pub const QuantityError = error{ DifferentArrayListItemsLen, UnitNotCompatibleError } || Allocator.Error;
+pub const QuantityError = error{ DifferentArrayListItemsLen, UnitNotCompatibleError } || Allocator.Error || ConversionError;
 
 pub fn Quantity(comptime T: type, comptime U: Unit) type {
     const child_type_enum: QuantityChildType = switch (@typeInfo(T)) {
@@ -601,6 +604,10 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                 },
                 .slice_int, .slice_float => @compileError("Cannot convert slice with to, use toInto instead."),
             }
+        }
+
+        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, equivalency: Equivalency, args: anytype) QuantityError!Quantity(T, unit_type) {
+            return try equivalency.convert(T, U, self, unit_type, args);
         }
 
         pub fn toInto(self: Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) QuantityError!void {
