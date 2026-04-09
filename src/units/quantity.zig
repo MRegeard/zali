@@ -18,6 +18,22 @@ pub const QuantityChildType = enum {
     slice_float,
 };
 
+pub const NotAQuantityError = error.NotAQuantityError;
+
+pub fn checkQuantity(comptime Q: type, quantity: Q) !Q {
+    const t_info = @typeInfo(Q);
+    if (t_info == .@"struct" and @hasField(Q, "value")) {
+        return quantity;
+    } else {
+        return NotAQuantityError;
+    }
+}
+
+pub fn isQuantity(quantity: anytype) bool {
+    _ = (try checkQuantity(@TypeOf(quantity), quantity)) catch return false;
+    return true;
+}
+
 pub const QuantityError = error{ DifferentArrayListItemsLen, UnitNotCompatibleError } || Allocator.Error;
 
 pub fn Quantity(comptime T: type, comptime U: Unit) type {
@@ -61,6 +77,33 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
 
         pub fn init(value: T) Self {
             return .{ .value = value };
+        }
+
+        pub fn initScalarValue(value: getChildTypeScalar(T)) Self {
+            var return_val: T = undefined;
+            switch (child_type) {
+                .int, .float => return_val = value,
+                .vector_int, .vector_float => return_val = @splat(value),
+                .array_int,
+                .array_float,
+                => @memset(&return_val, value),
+                .slice_int, .slice_float => {
+                    @compileError("Cannot init slice without a buffer, use initScalarValueWithBuf instead.");
+                },
+            }
+            return Self{ .value = return_val };
+        }
+
+        pub fn initScalarValueWithBuf(value: getChildTypeScalar(T), buf: T) Self {
+            switch (child_type) {
+                .slice_int, .slice_float => {
+                    @memset(buf, value);
+                    return Self{ .value = buf };
+                },
+                else => {
+                    @compileError("Using buffered init for non-slice type is unessecary, use initScalarValue instead.");
+                },
+            }
         }
 
         pub fn getUnit(self: *Self) Unit {
@@ -385,6 +428,15 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     }
                 },
                 else => out.value = self.cbrt().value,
+            }
+        }
+
+        pub fn setScalarValue(self: *Self, value: getChildTypeScalar(T)) void {
+            switch (child_type) {
+                .int, .float => self.value = value,
+                .vector_int, .vector_float => self.value = @splat(value),
+                .array_int, .array_float => @memset(&self.value, value),
+                .slice_int, .slice_float => @memset(self.value, value),
             }
         }
 
@@ -1231,4 +1283,47 @@ test "format" {
     const print5 = try std.fmt.allocPrint(allocator, "{f}", .{q5});
     try std.testing.expectEqualSlices(u8, "@Slice { 3, 7 } Pa s-1", print5);
     allocator.free(print5);
+}
+
+test "initScalarValue" {
+    // Int, Float
+    const q1: Quantity(u32, si.m) = .initScalarValue(4);
+    try testing.expectEqual(4, q1.value);
+
+    // Vector
+    const q2: Quantity(@Vector(2, u32), si.Pa) = .initScalarValue(2);
+    try testing.expectEqual(@Vector(2, u32){ 2, 2 }, q2.value);
+
+    // Array
+    const q3: Quantity([2]u32, si.Pa) = .initScalarValue(3);
+    try testing.expectEqual([2]u32{ 3, 3 }, q3.value);
+}
+
+test "initScalarValueWithBuf" {
+    var buf: [3]u8 = undefined;
+    const q: Quantity([]u8, si.m) = .initScalarValueWithBuf(10, &buf);
+    try testing.expectEqualSlices(u8, @constCast(&[3]u8{ 10, 10, 10 }), q.value);
+}
+
+test "setScalarValue" {
+    // Int, Float
+    var q1: Quantity(u32, si.m) = .init(0);
+    q1.setScalarValue(3);
+    try testing.expectEqual(3, q1.value);
+
+    // Vector
+    var q2: Quantity(@Vector(3, usize), si.s) = .init(.{ 1, 2, 3 });
+    q2.setScalarValue(5);
+    try testing.expectEqual(@Vector(3, usize){ 5, 5, 5 }, q2.value);
+
+    // Array
+    var q3: Quantity([2]f64, si.a) = .init(.{ 3.0, 6.0 });
+    q3.setScalarValue(10.0);
+    try zatest.expectApproxEqAbsIter([2]u8{ 10.0, 10.0 }, q3.value, 1e-15);
+
+    // Slice
+    var buf: [4]u8 = undefined;
+    var q4: Quantity([]u8, si.Hz) = .init(&buf);
+    q4.setScalarValue(12);
+    try testing.expectEqualSlices(u8, @constCast(&[4]u8{ 12, 12, 12, 12 }), q4.value);
 }
