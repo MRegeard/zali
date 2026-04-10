@@ -354,6 +354,7 @@ test "decompose" {
         .n = Fraction(isize).initInt(0),
         .t = Fraction(isize).initInt(-2),
         .th = Fraction(isize).initInt(0),
+        .a = Fraction(isize).initInt(0),
     };
     const N: Unit = .init(dimension, 1, try SymbolExpression.initFromString("N"));
     const N_decomp = N.decompose(.SI);
