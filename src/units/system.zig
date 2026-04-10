@@ -3,16 +3,18 @@ const testing = std.testing;
 const si = @import("si.zig");
 const Unit = @import("unit.zig").Unit;
 
-pub const BASE_UNIT_SI: SystemUnit = .init(@constCast(&[7][]const u8{ "l", "m", "t", "i", "th", "n", "j" }), @constCast(&[7]Unit{ si.m, si.kg, si.s, si.A, si.K, si.mol, si.cd }));
+pub const BASE_UNIT_SI: SystemUnit = .init(@constCast(&[8][]const u8{ "l", "m", "t", "i", "th", "n", "j", "a" }), @constCast(&[8]Unit{ si.m, si.kg, si.s, si.A, si.K, si.mol, si.cd, si.rad }));
 
-pub const BASE_UNIT_CGS: SystemUnit = .init(@constCast(&[6][]const u8{ "l", "m", "t", "th", "n", "j" }), @constCast(&[6]Unit{ si.cm, si.g, si.s, si.K, si.mol, si.cd }));
+pub const BASE_UNIT_CGS: SystemUnit = .init(@constCast(&[7][]const u8{ "l", "m", "t", "th", "n", "j", "a" }), @constCast(&[7]Unit{ si.cm, si.g, si.s, si.K, si.mol, si.cd, si.rad }));
+
+pub const MAX_SYSTEM_LENGTH = 8;
 
 pub const SystemUnit = struct {
     const Self = @This();
 
-    len: usize = 7,
-    dim_field: [7][]const u8 = undefined,
-    unit: [7]Unit = undefined,
+    len: usize = MAX_SYSTEM_LENGTH,
+    dim_field: [MAX_SYSTEM_LENGTH][]const u8 = undefined,
+    unit: [MAX_SYSTEM_LENGTH]Unit = undefined,
 
     fn init(dim_field: [][]const u8, unit: []Unit) Self {
         if (dim_field.len != unit.len) {
@@ -22,11 +24,11 @@ pub const SystemUnit = struct {
                 @panic("Trying to initialise BaseUnit with `dim_field` `and unit` of different lenght");
             }
         }
-        if (dim_field.len > 7) {
+        if (dim_field.len > MAX_SYSTEM_LENGTH) {
             if (@inComptime()) {
-                @compileError("`dim_field` lenght greater than 7 unsupported, panic !");
+                @compileError("`dim_field` length greater than 8 unsupported, panic !");
             } else {
-                @panic("`dim_field` lenght greater than 7 unsupported, panic !");
+                @panic("`dim_field` lenght greater than 8 unsupported, panic !");
             }
         }
         var result: Self = .{};
@@ -74,10 +76,10 @@ pub const System = enum {
 
 test "SystemUnit init" {
     const si_unit = SystemUnit.init(
-        @constCast(&[7][]const u8{ "l", "m", "t", "i", "th", "n", "j" }),
-        @constCast(&[7]Unit{ si.m, si.kg, si.s, si.A, si.K, si.mol, si.cd }),
+        @constCast(&[MAX_SYSTEM_LENGTH][]const u8{ "l", "m", "t", "i", "th", "n", "j", "a" }),
+        @constCast(&[MAX_SYSTEM_LENGTH]Unit{ si.m, si.kg, si.s, si.A, si.K, si.mol, si.cd, si.rad }),
     );
-    try testing.expectEqual(7, si_unit.len);
+    try testing.expectEqual(MAX_SYSTEM_LENGTH, si_unit.len);
     try testing.expectEqualStrings("i", si_unit.dim_field[3]);
     try testing.expectEqual(si.kg, si_unit.unit[1]);
 }
