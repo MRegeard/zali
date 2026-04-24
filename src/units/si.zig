@@ -25,14 +25,14 @@ pub const l: Unit = Unit.init(dim_l, 0.001, .initUniqueSymbol("l"));
 
 // Angular
 //
-pub const rad: Unit = Unit.init(Dim.initDimensionless(), 1.0, .initUniqueSymbol("rad"));
+pub const rad: Unit = Unit.init(dim.angle, 1.0, .initUniqueSymbol("rad"));
 pub const deg: Unit = defUnitFromUnit(rad, std.math.pi / 180.0, .initUniqueSymbol("deg"));
 pub const hourangle: Unit = defUnitFromUnit(deg, 15.0, .initUniqueSymbol("hourangle"));
 pub const arcmin: Unit = defUnitFromUnit(deg, 1.0 / 60.0, .initUniqueSymbol("arcmin"));
 pub const arcsec: Unit = defUnitFromUnit(deg, 1.0 / 3600.0, .initUniqueSymbol("arcsec"));
 pub const mas: Unit = defUnitFromUnit(arcsec, 0.001, .initUniqueSymbol("mas"));
 pub const uas: Unit = defUnitFromUnit(arcsec, 0.000_001, .initUniqueSymbol("uas"));
-pub const sr: Unit = Unit.init(Dim.initDimensionless(), 1.0, .initUniqueSymbol("sr"));
+pub const sr: Unit = defUnitFromUnit(rad.pow(2), 1, .initUniqueSymbol("sr"));
 
 // Time
 //

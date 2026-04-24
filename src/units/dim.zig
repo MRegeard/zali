@@ -14,6 +14,7 @@ pub const electricCurrent: Dim = .initUniqueFieldInt("i", 1);
 pub const temperature: Dim = .initUniqueFieldInt("th", 1);
 pub const amount: Dim = .initUniqueFieldInt("n", 1);
 pub const luminousIntensity: Dim = .initUniqueFieldInt("j", 1);
+pub const angle: Dim = .initUniqueFieldInt("a", 1);
 
 pub const Dim = struct {
     const Self = @This();
@@ -25,6 +26,7 @@ pub const Dim = struct {
     th: Fraction(isize),
     n: Fraction(isize),
     j: Fraction(isize),
+    a: Fraction(isize),
 
     pub fn initDimensionless() Self {
         return .{
@@ -35,6 +37,7 @@ pub const Dim = struct {
             .th = Fraction(isize).initInt(0),
             .n = Fraction(isize).initInt(0),
             .j = Fraction(isize).initInt(0),
+            .a = Fraction(isize).initInt(0),
         };
     }
 
@@ -55,7 +58,8 @@ pub const Dim = struct {
             (self.i.eql(other.i)) and
             (self.th.eql(other.th)) and
             (self.n.eql(other.n)) and
-            (self.j.eql(other.j));
+            (self.j.eql(other.j)) and
+            (self.a.eql(other.a));
     }
 
     pub fn add(self: Self, other: Self) FractionError!Self {
@@ -172,10 +176,10 @@ pub const Dim = struct {
 
     pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll("Dim: {");
-        inline for (@typeInfo(Self).@"struct".fields, 0..7) |field, i| {
+        inline for (@typeInfo(Self).@"struct".fields, 0..8) |field, i| {
             const name = field.name;
             try writer.print("{s} = {f}", .{ name, @field(self.*, name) });
-            if (i < 6) {
+            if (i < 7) {
                 try writer.writeAll(", ");
             }
         }
@@ -340,6 +344,6 @@ test "format" {
 
     var buf: [64]u8 = undefined;
     const print_res = try std.fmt.bufPrint(&buf, "{f}", .{lengthTime});
-    const expected: []const u8 = "Dim: {l = 1, m = 0, t = 1, i = 0, th = 0, n = 0, j = 0}";
+    const expected: []const u8 = "Dim: {l = 1, m = 0, t = 1, i = 0, th = 0, n = 0, j = 0, a = 0}";
     try testing.expectEqualSlices(u8, expected, print_res);
 }
