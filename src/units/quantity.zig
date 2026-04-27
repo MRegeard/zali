@@ -2,11 +2,12 @@ const std = @import("std");
 const math = std.math;
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
-const Unit = @import("unit.zig").Unit;
+const unitMod = @import("unit.zig");
+const Unit = unitMod.Unit;
 const System = @import("system.zig").System;
 const si = @import("si.zig");
 const zatest = @import("../test.zig");
-const equivalency_mod = @import("equivalencies.zig");
+const equivalency_mod = @import("equivalency.zig");
 const ConversionError = equivalency_mod.ConversionError;
 const Equivalency = equivalency_mod.Equivalency;
 
@@ -109,7 +110,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn getUnit(self: *Self) Unit {
+        pub fn getUnit(self: *const Self) Unit {
             return @TypeOf(self.*).unit;
         }
 
@@ -165,6 +166,21 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             return;
         }
 
+        pub fn addValue(self: Self, val: T) Self {
+            const quantity_val: Quantity(T, U) = .init(val);
+            return self.add(quantity_val);
+        }
+
+        pub fn addValueInPlace(self: *Self, val: T) void {
+            const quantity_val: Quantity(T, U) = .init(val);
+            self.addInPlace(quantity_val);
+        }
+
+        pub fn addValueInto(self: Self, val: T, out: *Self) void {
+            const quantity_val: Quantity(T, U) = .init(val);
+            self.addInto(quantity_val, out);
+        }
+
         pub fn sub(self: Self, other: Self) Self {
             switch (child_type) {
                 .int, .float, .vector_int, .vector_float => {
@@ -215,6 +231,21 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             return;
         }
 
+        pub fn subValue(self: Self, val: T) Self {
+            const quantity_val: Quantity(T, U) = .init(val);
+            return self.sub(quantity_val);
+        }
+
+        pub fn subValueInPlace(self: *Self, val: T) void {
+            const quantity_val: Quantity(T, U) = .init(val);
+            self.subInPlace(quantity_val);
+        }
+
+        pub fn subValueInto(self: Self, val: T, out: *Self) void {
+            const quantity_val: Quantity(T, U) = .init(val);
+            self.subInto(quantity_val, out);
+        }
+
         pub fn mul(self: Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
             if (@TypeOf(other.value) != T) {
                 @compileError("To multiply quantity, value type must match.");
@@ -248,6 +279,29 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                 },
             }
             return;
+        }
+
+        pub fn mulValue(self: Self, val: T) Self {
+            const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
+            return self.mul(quantity_val);
+        }
+
+        pub fn mulValueInPlace(self: *Self, val: T) void {
+            // This is here because there is no method to multiply in place and we cannot use
+            // .mul for slices
+            if (child_type == .slice_int or child_type == .slice_float) {
+                std.debug.assert((self.value.len == val.len));
+                for (0..self.value.len) |i| {
+                    self.value[i] = self.value[i] * val[i];
+                }
+            } else {
+                self.* = self.*.mulValue(val);
+            }
+        }
+
+        pub fn mulValueInto(self: Self, val: T, out: *Self) void {
+            const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
+            self.mulInto(quantity_val, out);
         }
 
         pub fn div(self: Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
@@ -296,6 +350,36 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     out.value = self.div(other).value;
                 },
             }
+        }
+
+        pub fn divValue(self: Self, val: T) Self {
+            const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
+            return self.div(quantity_val);
+        }
+
+        pub fn divValueInPlace(self: *Self, val: T) void {
+            // This is here because there is no method to divide in place and we cannot use
+            // .div for slices
+            switch (child_type) {
+                .slice_int => {
+                    std.debug.assert((self.value.len == val.len));
+                    for (0..self.value.len) |i| {
+                        self.value[i] = @divTrunc(self.value[i], val[i]);
+                    }
+                },
+                .slice_float => {
+                    std.debug.assert((self.value.len == val.len));
+                    for (0..self.value.len) |i| {
+                        self.value[i] = self.value[i] / val[i];
+                    }
+                },
+                else => self.* = self.*.divValue(val),
+            }
+        }
+
+        pub fn divValueInto(self: Self, val: T, out: *Self) void {
+            const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
+            self.divInto(quantity_val, out);
         }
 
         pub fn pow(self: Self, comptime value: isize) Quantity(T, U.pow(value)) {
@@ -688,6 +772,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                 try writer.print("{d}", .{value});
             }
         }
+
         pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             switch (child_type) {
                 .int => {
@@ -941,6 +1026,23 @@ test "addInto" {
     try testing.expectEqual(si.m, @TypeOf(q_list_dest).unit);
 }
 
+test "add value methods" {
+    const q1: Quantity(u8, si.m) = .init(5);
+    const q_add1 = q1.addValue(3);
+    try testing.expectEqual(8, q_add1.value);
+    try testing.expectEqual(q1.getUnit(), q_add1.getUnit());
+
+    var q2: Quantity(@Vector(3, u8), si.s) = .init(.{ 3, 4, 5 });
+    q2.addValueInPlace(.{ 3, 4, 5 });
+    try testing.expectEqual(@Vector(3, u8){ 6, 8, 10 }, q2.value);
+
+    var buf: [3]u16 = undefined;
+    const q3: Quantity([]u16, si.Bq) = .init(@constCast(&[3]u16{ 10, 20, 30 }));
+    var q_add3: Quantity([]u16, si.Bq) = .init(&buf);
+    q3.addValueInto(@constCast(&[3]u16{ 40, 50, 60 }), &q_add3);
+    try testing.expectEqualSlices(u16, @constCast(&[3]u16{ 50, 70, 90 }), q_add3.value);
+}
+
 test "sub" {
     //float and int
     const size1 = Quantity(u8, si.AA).init(12);
@@ -1006,6 +1108,23 @@ test "subInto" {
     try testing.expectApproxEqAbs(1, q_subbed.value[0], 1e-15);
 }
 
+test "sub value methods" {
+    const q1: Quantity(i32, si.N) = .init(-33);
+    const q_sub1 = q1.subValue(15);
+    try testing.expectEqual(-48, q_sub1.value);
+    try testing.expectEqual(q1.getUnit(), q_sub1.getUnit());
+
+    var q2: Quantity([3]u8, si.mol) = .init(.{ 3, 3, 3 });
+    q2.addValueInPlace(.{ 4, 5, 6 });
+    try testing.expectEqual([3]u8{ 7, 8, 9 }, q2.value);
+
+    var buf: [2]f32 = undefined;
+    const q3: Quantity([]f32, si.kg) = .init(@constCast(&[2]f32{ 3.3, 4.4 }));
+    var q_sub3: Quantity([]f32, si.kg) = .init(&buf);
+    q3.subValueInto(@constCast(&[2]f32{ 3.3, 4.4 }), &q_sub3);
+    try zatest.expectApproxEqAbsIter(@constCast(&[2]f32{ 0.0, 0.0 }), q_sub3.value, 1e-15);
+}
+
 test "mul" {
     // float and int
     const size1 = Quantity(f64, si.m).init(10);
@@ -1046,6 +1165,25 @@ test "mulInto" {
     try testing.expectEqual(si.m.mul(si.s), @TypeOf(action).unit);
 }
 
+test "mul value methods" {
+    const q1: Quantity(u16, si.mm) = .init(32);
+    const q_mul1 = q1.mulValue(10);
+    try testing.expectEqual(320, q_mul1.value);
+    try testing.expectEqual(q1.getUnit(), q_mul1.getUnit());
+
+    var q2: Quantity([3]u8, si.kg) = .init(.{ 1, 2, 3 });
+    q2.mulValueInPlace(.{ 10, 10, 10 });
+    try testing.expectEqual([3]u8{ 10, 20, 30 }, q2.value);
+    try testing.expectEqual(si.kg, q2.getUnit());
+
+    var buf: [1]i16 = undefined;
+    const q3: Quantity([]i16, si.deg) = .init(@constCast(&[1]i16{-20}));
+    var q_mul3: Quantity([]i16, si.deg) = .init(&buf);
+    q3.mulValueInto(@constCast(&[1]i16{-4}), &q_mul3);
+    try testing.expectEqualSlices(i16, @constCast(&[_]i16{80}), q_mul3.value);
+    try testing.expectEqual(si.deg, q_mul3.getUnit());
+}
+
 test "div" {
     // float and int
     const size = Quantity(f64, si.m).init(5);
@@ -1084,6 +1222,25 @@ test "divInto" {
     q1.divInto(q2, &speed);
     try testing.expectEqual(0, speed.value[0]);
     try testing.expectEqual(si.m.div(si.s), @TypeOf(speed).unit);
+}
+
+test "div value methods" {
+    const q1: Quantity(@Vector(2, u32), si.kg) = .init(.{ 10, 20 });
+    const q_div1 = q1.divValue(@splat(2));
+    try testing.expectEqual(@Vector(2, u32){ 5, 10 }, q_div1.value);
+    try testing.expectEqual(q1.getUnit(), q_div1.getUnit());
+
+    var buf1: [2]f32 = .{ 15, 25 };
+    var q2: Quantity([]f32, si.m) = .init(&buf1);
+    q2.divValueInPlace(@constCast(&[2]f32{ 5, 25 }));
+    try zatest.expectApproxEqAbsIter(@constCast(&[2]f32{ 3, 1 }), q2.value, 1e-15);
+    try testing.expectEqual(si.m, q2.getUnit());
+
+    var buf2: [2]f32 = undefined;
+    var q_div3: Quantity([]f32, si.m) = .init(&buf2);
+    q2.divValueInto(@constCast(&[2]f32{ 2, 2 }), &q_div3);
+    try zatest.expectApproxEqAbsIter(@constCast(&[2]f32{ 1.5, 0.5 }), q_div3.value, 1e-15);
+    try testing.expectEqual(si.m, q_div3.getUnit());
 }
 
 test "pow" {
