@@ -157,6 +157,10 @@ pub const SymbolExpression = struct {
     }
 
     pub fn appendInPlace(self: *Self, symbol_term: SymbolTerm) void {
+        // This is here because multiplying by UNITLESS give symbol '""', but we want to ignore it.
+        if (symbol_term.symbol.len == 0) {
+            return;
+        }
         if (self.indexOfSymbol(symbol_term)) |idx| {
             self.terms[idx].exponent.addInPlace(symbol_term.exponent) catch unreachable;
             self.checkRemoveInPlace();
