@@ -57,5 +57,5 @@ pub const psi: Unit = defUnitFromUnit(lbf.mul(inch.pow(-2)), 1, .initUniqueSymbo
 pub const hp: Unit = defUnitFromUnit(si.W, 0.00134102209, .initUniqueSymbol("hp"));
 
 // Temperature
-pub const degF: Unit = .init(dimMod.temperature, 1, .initUniqueSymbol("degF"));
-pub const degR: Unit = defUnitFromUnit(si.K, 5 / 9, .initUniqueSymbol("degR"));
+pub const degF: Unit = .initAffine(dimMod.temperature, 5 / 9, 459.67 * 5.0 / 9.0, .initUniqueSymbol("degF"));
+pub const degR: Unit = .init(dimMod.temperature, 5 / 9, .initUniqueSymbol("degR"));
