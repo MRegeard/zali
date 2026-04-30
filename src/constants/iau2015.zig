@@ -5,7 +5,7 @@ const codata = @import("codata2022.zig");
 const units = @import("../units.zig");
 
 const degToRad = std.math.degreesToRadians;
-const deg_value: f64 = 1 / 3600;
+const deg_value: f64 = 1.0 / 3600.0;
 
 // Distance
 //
