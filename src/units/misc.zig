@@ -37,8 +37,8 @@ pub const u: Unit = defUnitFromConst(cst.u, .initUniqueSymbol("u"));
 //
 pub const eV: Unit = defUnitFromUnit(si.J, cst.e.quantity.value, .initUniqueSymbol("eV"));
 // TODO: use equivalencies to converto cst.Ryd to eV.
-const h_to_eV_s = cst.h.quantity.to(eV.mul(si.s)) catch unreachable;
-const ryd_to_ev = cst.Ryd.quantity.mul(cst.c.quantity).mul(h_to_eV_s).to(eV) catch unreachable;
+const h_to_eV_s = cst.h.quantity.to(eV.mul(si.s));
+const ryd_to_ev = cst.Ryd.quantity.mul(cst.c.quantity).mul(h_to_eV_s).to(eV);
 pub const Ry: Unit = defUnitFromUnit(eV, ryd_to_ev.value, .initUniqueSymbol("Ry"));
 
 // Computer
