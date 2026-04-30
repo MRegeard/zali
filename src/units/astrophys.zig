@@ -11,8 +11,8 @@ const defUnitFromConst = utils.defUnitFromConst;
 const PI_F64: f64 = std.math.pi;
 const yr_quantity: Quantity(f64, si.yr) = .init(1.0);
 const s_quantity: Quantity(f64, si.s) = .init(1.0);
-const lyr_quantity = cst.c.quantity.mul(yr_quantity).to(si.m) catch unreachable;
-const lsec_quantity = cst.c.quantity.mul(s_quantity).to(si.m) catch unreachable;
+const lyr_quantity = cst.c.quantity.mul(yr_quantity).to(si.m);
+const lsec_quantity = cst.c.quantity.mul(s_quantity).to(si.m);
 
 // Length
 //
