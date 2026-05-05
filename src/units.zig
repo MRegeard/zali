@@ -3,6 +3,7 @@ const testing = std.testing;
 
 pub const dim = @import("units/dim.zig");
 pub const Dim = dim.Dim;
+pub const utils = @import("units/utils.zig");
 pub const unit = @import("units/unit.zig");
 pub const Unit = unit.Unit;
 pub const quantity = @import("units/quantity.zig");
