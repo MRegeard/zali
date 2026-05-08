@@ -16,6 +16,8 @@ pub const SystemUnit = system.SystemUnit;
 pub const symbol = @import("units/symbol.zig");
 pub const SymbolTerm = symbol.SymbolTerm;
 pub const SymbolExpression = symbol.SymbolExpression;
+pub const equivalency = @import("units/equivalency.zig");
+pub const Equivalency = equivalency.Equivalency;
 
 pub const si = @import("units/si.zig");
 pub const cgs = @import("units/cgs.zig");
