@@ -6,9 +6,9 @@ const unitMod = @import("unit.zig");
 const Unit = unitMod.Unit;
 const System = @import("system.zig").System;
 const si = @import("si.zig");
+const imperial = @import("imperial.zig");
 const zatest = @import("../test.zig");
 const equivalency_mod = @import("equivalency.zig");
-const ConversionError = equivalency_mod.ConversionError;
 const Equivalency = equivalency_mod.Equivalency;
 
 pub const QuantityChildType = enum {
@@ -21,24 +21,6 @@ pub const QuantityChildType = enum {
     slice_int,
     slice_float,
 };
-
-pub const NotAQuantityError = error.NotAQuantityError;
-
-pub fn checkQuantity(comptime Q: type, quantity: Q) !Q {
-    const t_info = @typeInfo(Q);
-    if (t_info == .@"struct" and @hasField(Q, "value")) {
-        return quantity;
-    } else {
-        return NotAQuantityError;
-    }
-}
-
-pub fn isQuantity(quantity: anytype) bool {
-    _ = (try checkQuantity(@TypeOf(quantity), quantity)) catch return false;
-    return true;
-}
-
-pub const QuantityError = error{ DifferentArrayListItemsLen, UnitNotCompatibleError } || Allocator.Error || ConversionError;
 
 pub fn Quantity(comptime T: type, comptime U: Unit) type {
     const child_type_enum: QuantityChildType = switch (@typeInfo(T)) {
@@ -72,12 +54,11 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
     };
     return struct {
         const Self = @This();
-
+        pub const is_zali_quantity: bool = true;
         pub const unit: Unit = U;
+        const child_type: QuantityChildType = child_type_enum;
 
         value: T,
-
-        const child_type: QuantityChildType = child_type_enum;
 
         pub fn init(value: T) Self {
             return .{ .value = value };
@@ -604,14 +585,14 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn to(self: Self, comptime unit_type: Unit) QuantityError!Quantity(T, unit_type) {
-            if (!U.dim.eql(unit_type.dim)) {
-                return QuantityError.UnitNotCompatibleError;
+        pub fn to(self: Self, comptime unit_type: Unit) Quantity(T, unit_type) {
+            if (comptime !U.dim.eql(unit_type.dim)) {
+                @compileError("Units are not compatible.");
             }
             const convert_scale = U.scale / unit_type.scale;
             const self_offset: f64 = U.offset orelse 0;
             const unit_offset: f64 = unit_type.offset orelse 0;
-            const convert_offset = self_offset - unit_offset;
+            const convert_offset: f64 = (self_offset - unit_offset) / unit_type.scale;
             switch (child_type) {
                 .int => {
                     const convert_scale_int: T = @intFromFloat(convert_scale);
@@ -690,13 +671,13 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, equivalency: Equivalency, args: anytype) QuantityError!Quantity(T, unit_type) {
+        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
             return try equivalency.convert(T, U, self, unit_type, args);
         }
 
-        pub fn toInto(self: Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) QuantityError!void {
-            if (!U.dim.eql(unit_type.dim)) {
-                return QuantityError.UnitNotCompatibleError;
+        pub fn toInto(self: Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) void {
+            if (comptime !U.dim.eql(unit_type.dim)) {
+                @compileError("Units are not compatible.");
             }
             const convert_scale = U.scale / unit_type.scale;
             const self_offset: f64 = U.offset orelse 0;
@@ -1336,31 +1317,37 @@ test "cbrtInto" {
 
 test "to" {
     const size_m = Quantity(f64, si.m).init(3);
-    const size_cm = try size_m.to(si.cm);
+    const size_cm = size_m.to(si.cm);
     try testing.expectEqual(300, size_cm.value);
     try testing.expectEqual(si.cm, @TypeOf(size_cm).unit);
 
     const mass_g = Quantity(f64, si.g).init(30);
-    const mass_kg = try mass_g.to(si.kg);
+    const mass_kg = mass_g.to(si.kg);
 
     try testing.expectEqual(0.03, mass_kg.value);
     try testing.expectEqual(si.kg, @TypeOf(mass_kg).unit);
 
     const temp_C = Quantity(f64, si.degC).init(0);
-    const temp_K = try temp_C.to(si.K);
+    const temp_K = temp_C.to(si.K);
     try testing.expectEqual(273.15, temp_K.value);
     try testing.expectEqual(si.K, @TypeOf(temp_K).unit);
 
     const temp_K_2 = Quantity(f64, si.K).init(0);
-    const temp_C_2 = try temp_K_2.to(si.degC);
+    const temp_C_2 = temp_K_2.to(si.degC);
     try testing.expectEqual(-273.15, temp_C_2.value);
+
+    const temp_F: Quantity(f64, imperial.degF) = .init(32);
+    const temp_F_to_K = temp_F.to(si.K);
+    try testing.expectApproxEqAbs(255.37222222222223, temp_F_to_K.value, 1e-15);
 }
+
+test "toWithEquivalency" {}
 
 test "toInto" {
     const q1: Quantity([]f64, si.m) = .init(@constCast(&[2]f64{ 1, 2 }));
     var arr: [2]f64 = undefined;
     var q2: Quantity([]f64, si.cm) = .init(&arr);
-    try q1.toInto(si.cm, &q2);
+    q1.toInto(si.cm, &q2);
     try testing.expectEqualSlices(f64, &[2]f64{ 100, 200 }, q2.value);
 }
 
