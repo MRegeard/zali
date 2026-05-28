@@ -10,83 +10,87 @@ const imperial = @import("imperial.zig");
 const zatest = @import("../test.zig");
 const equivalency_mod = @import("equivalency.zig");
 const Equivalency = equivalency_mod.Equivalency;
-
-pub const QuantityChildType = enum {
-    int,
-    float,
-    vector_int,
-    vector_float,
-    array_int,
-    array_float,
-    slice_int,
-    slice_float,
-};
+const utils = @import("utils.zig");
+const us = @import("units_storage.zig");
 
 pub fn Quantity(comptime T: type, comptime U: Unit) type {
-    const child_type_enum: QuantityChildType = switch (@typeInfo(T)) {
-        .int => .int,
-        .float => .float,
-        .vector => |vector| blk: {
-            switch (@typeInfo(vector.child)) {
-                .int => break :blk .vector_int,
-                .float => break :blk .vector_float,
-                else => @compileError("Unsupported child type for vector"),
-            }
-        },
-        .array => |array| blk: {
-            switch (@typeInfo(array.child)) {
-                .int => break :blk .array_int,
-                .float => break :blk .array_float,
-                else => @compileError("Unsupported child type for array"),
-            }
-        },
-        .pointer => |p| blk: {
-            switch (p.size) {
-                .slice => switch (@typeInfo(p.child)) {
-                    .int => break :blk .slice_int,
-                    .float => break :blk .slice_float,
-                    else => @compileError("Unsupported child type for slice"),
-                },
-                else => @compileError("Unsupported pointer type"),
-            }
-        },
-        else => @compileError("Unsupported type"),
+    const InnerType = enum {
+        scalar,
+        vector,
+        array,
+        slice,
     };
     return struct {
         const Self = @This();
         pub const is_zali_quantity: bool = true;
         pub const unit: Unit = U;
-        const child_type: QuantityChildType = child_type_enum;
+        pub const value_type: type = T;
+        const inner_type: InnerType = switch (@typeInfo(T)) {
+            .float => .scalar,
+            .vector => |vector| blk: {
+                switch (@typeInfo(vector.child)) {
+                    .float => break :blk .vector,
+                    else => @compileError("Unsupported Vector child type " ++ @typeName(vector.child) ++ " ."),
+                }
+            },
+            .array => |array| blk: {
+                switch (@typeInfo(array.child)) {
+                    .float => break :blk .array,
+                    else => @compileError("Unsupported Array child type " ++ @typeName(array.child) ++ " ."),
+                }
+            },
+            .pointer => |p| blk: {
+                switch (p.size) {
+                    .slice => switch (@typeInfo(p.child)) {
+                        .float => break :blk .slice,
+                        else => @compileError("Unsupported Slice child type " ++ @typeName(p.child) ++ " ."),
+                    },
+                    else => @compileError("Unsupported pointer type."),
+                }
+            },
+            else => @compileError("Unsupported type for Quantity value type T, got " ++ @typeName(T) ++ " ."),
+        };
 
         value: T,
+
+        fn getInnerTypeScalarType(comptime Ty: type) type {
+            switch (@typeInfo(Ty)) {
+                .float => return Ty,
+                .vector => |vector| return vector.child,
+                .array => |array| return array.child,
+                .pointer => |pointer| switch (pointer.size) {
+                    .slice => return pointer.child,
+                    else => @compileError("Unsupported pointer type."),
+                },
+                else => unreachable,
+            }
+        }
 
         pub fn init(value: T) Self {
             return .{ .value = value };
         }
 
-        pub fn initScalarValue(value: getChildTypeScalar(T)) Self {
+        pub fn initScalarValue(value: getInnerTypeScalarType(T)) Self {
             var return_val: T = undefined;
-            switch (child_type) {
-                .int, .float => return_val = value,
-                .vector_int, .vector_float => return_val = @splat(value),
-                .array_int,
-                .array_float,
-                => @memset(&return_val, value),
-                .slice_int, .slice_float => {
+            switch (inner_type) {
+                .scalar => return_val = value,
+                .vector => return_val = @splat(value),
+                .array => @memset(&return_val, value),
+                .slice => {
                     @compileError("Cannot init slice without a buffer, use initScalarValueWithBuf instead.");
                 },
             }
             return Self{ .value = return_val };
         }
 
-        pub fn initScalarValueWithBuf(value: getChildTypeScalar(T), buf: T) Self {
-            switch (child_type) {
-                .slice_int, .slice_float => {
+        pub fn initScalarValueWithBuf(value: getInnerTypeScalarType(T), buf: T) Self {
+            switch (inner_type) {
+                .slice => {
                     @memset(buf, value);
                     return Self{ .value = buf };
                 },
                 else => {
-                    @compileError("Using buffered init for non-slice type is unessecary, use initScalarValue instead.");
+                    @compileError("Using buffered init for non-slice type is unnecessary, use initScalarValue instead.");
                 },
             }
         }
@@ -96,55 +100,52 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn add(self: Self, other: Self) Self {
-            switch (child_type) {
-                .int, .float, .vector_float, .vector_int => {
+            switch (inner_type) {
+                .scalar, .vector => {
                     return Quantity(T, U).init(self.value + other.value);
                 },
-                .array_int, .array_float => {
+                .array => {
                     var new_array: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_array[i] = self.value[i] + other.value[i];
+                    for (&new_array, self.value, other.value) |*n, s, o| {
+                        n.* = s + o;
                     }
                     return Quantity(T, U).init(new_array);
                 },
-                .slice_int, .slice_float => {
-                    @compileError("Cannot add slice, use addInPlace or addInto instead.");
+                .slice => {
+                    @compileError("Cannot add Slice, use addInPlace or addInto instead.");
                 },
             }
         }
 
         pub fn addInPlace(self: *Self, other: Self) void {
-            switch (child_type) {
-                .int, .float, .vector_int, .vector_float => {
+            switch (inner_type) {
+                .scalar, .vector => {
                     self.value += other.value;
                 },
-                .array_int, .array_float => {
-                    for (0..self.value.len) |i| {
-                        self.value[i] += other.value[i];
+                .array => {
+                    for (&self.value, other.value) |*s, o| {
+                        s.* += o;
                     }
                 },
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == other.value.len);
-                    for (0..self.value.len) |i| {
-                        self.value[i] += other.value.items[i];
+                .slice => {
+                    for (self.value, other.value) |*s, o| {
+                        s.* += o;
                     }
                 },
             }
         }
 
         pub fn addInto(self: Self, other: Self, out: *Self) void {
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert((self.value.len == other.value.len) and (self.value.len == out.value.len));
-                    for (0..self.value.len) |i| {
-                        out.value[i] = self.value[i] + other.value[i];
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, other.value, out.value) |s, o, *buf| {
+                        buf.* = s + o;
                     }
                 },
                 else => {
                     out.value = self.add(other).value;
                 },
             }
-            return;
         }
 
         pub fn addValue(self: Self, val: T) Self {
@@ -163,53 +164,50 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn sub(self: Self, other: Self) Self {
-            switch (child_type) {
-                .int, .float, .vector_int, .vector_float => {
+            switch (inner_type) {
+                .scalar, .vector => {
                     return Quantity(T, U).init(self.value - other.value);
                 },
-                .array_int, .array_float => {
+                .array => {
                     var new_array: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_array[i] = self.value[i] - other.value[i];
+                    for (&new_array, self.value, other.value) |*n, s, o| {
+                        n.* = s - o;
                     }
                     return Quantity(T, U).init(new_array);
                 },
-                .slice_int, .slice_float => {
-                    @compileError("Cannot sub slice, use subInPlace or subInto instead.");
+                .slice => {
+                    @compileError("Cannot sub Slice, use subInPlace or subInto instead.");
                 },
             }
         }
 
         pub fn subInPlace(self: *Self, other: Self) void {
-            switch (child_type) {
-                .int, .float, .vector_int, .vector_float => self.value -= other.value,
-                .array_int, .array_float => {
-                    for (0..self.value.len) |i| {
-                        self.value[i] -= other.value[i];
+            switch (inner_type) {
+                .scalar, .vector => self.value -= other.value,
+                .array => {
+                    for (&self.value, other.value) |*s, o| {
+                        s.* -= o;
                     }
                 },
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == other.value.len);
-                    for (0..self.value.len) |i| {
-                        self.value[i] -= other.value[i];
+                .slice => {
+                    for (self.value, other.value) |*s, o| {
+                        s.* -= o;
                     }
                 },
             }
         }
 
         pub fn subInto(self: Self, other: Self, out: *Self) void {
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert((self.value.len == other.value.len) and (self.value.len == out.value.len));
-                    for (0..self.value.len) |i| {
-                        out.value[i] = self.value[i] - other.value[i];
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, other.value, out.value) |s, o, *buf| {
+                        buf.* = s - o;
                     }
                 },
                 else => {
                     out.value = self.sub(other).value;
                 },
             }
-            return;
         }
 
         pub fn subValue(self: Self, val: T) Self {
@@ -228,38 +226,46 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn mul(self: Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
-            if (@TypeOf(other.value) != T) {
-                @compileError("To multiply quantity, value type must match.");
+            comptime {
+                const OtherType = @TypeOf(other);
+                utils.assertIsQuantity(OtherType);
+                const vt = OtherType.value_type;
+                if (vt != T) {
+                    @compileError("Expected Quantity with value type " ++ @typeName(T) ++ " ,got " ++ @typeName(vt) ++ " .");
+                }
             }
-            switch (child_type) {
-                .int, .float, .vector_int, .vector_float => return .init(self.value * other.value),
-                .array_int, .array_float => {
+            switch (inner_type) {
+                .scalar, .vector => return .init(self.value * other.value),
+                .array => {
                     var new_array: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_array[i] = self.value[i] * other.value[i];
+                    for (&new_array, self.value, other.value) |*n, s, o| {
+                        n.* = s * o;
                     }
                     return .init(new_array);
                 },
-                .slice_int, .slice_float => @compileError("Cannot multiply slice, use mulInto instead."),
+                .slice => @compileError("Cannot multiply Slice, use mulInto instead."),
             }
         }
 
         pub fn mulInto(self: Self, other: anytype, out: *Quantity(T, U.mul(@TypeOf(other).unit))) void {
-            if (@TypeOf(other.value) != T) {
-                @compileError("To mutliply quantity, value type must match.");
+            comptime {
+                const OtherType = @TypeOf(other);
+                utils.assertIsQuantity(OtherType);
+                const vt = OtherType.value_type;
+                if (vt != T) {
+                    @compileError("Expected Quantity with value type " ++ @typeName(T) ++ " ,got " ++ @typeName(vt) ++ " .");
+                }
             }
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert((self.value.len == other.value.len) and (self.value.len == out.value.len));
-                    for (0..self.value.len) |i| {
-                        out.value[i] = self.value[i] * other.value[i];
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, other.value, out.value) |s, o, *buf| {
+                        buf.* = s * o;
                     }
                 },
                 else => {
                     out.value = self.mul(other).value;
                 },
             }
-            return;
         }
 
         pub fn mulValue(self: Self, val: T) Self {
@@ -268,15 +274,18 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn mulValueInPlace(self: *Self, val: T) void {
-            // This is here because there is no method to multiply in place and we cannot use
-            // .mul for slices
-            if (child_type == .slice_int or child_type == .slice_float) {
-                std.debug.assert((self.value.len == val.len));
-                for (0..self.value.len) |i| {
-                    self.value[i] = self.value[i] * val[i];
-                }
-            } else {
-                self.* = self.*.mulValue(val);
+            switch (inner_type) {
+                .scalar, .vector => self.value *= val,
+                .array => {
+                    for (&self.value, val) |*s, v| {
+                        s.* *= v;
+                    }
+                },
+                .slice => {
+                    for (self.value, val) |*s, v| {
+                        s.* *= v;
+                    }
+                },
             }
         }
 
@@ -286,45 +295,40 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn div(self: Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
-            if (@TypeOf(other.value) != T) {
-                @compileError("To divide quantity, value type must match.");
+            comptime {
+                const OtherType = @TypeOf(other);
+                utils.assertIsQuantity(OtherType);
+                const vt = OtherType.value_type;
+                if (vt != T) {
+                    @compileError("Expected Quantity with value type " ++ @typeName(T) ++ " ,got " ++ @typeName(vt) ++ " .");
+                }
             }
-            switch (child_type) {
-                .int, .vector_int => return .init(@divTrunc(self.value, other.value)),
-                .float, .vector_float => return .init(self.value / other.value),
-                .array_int => {
+            switch (inner_type) {
+                .scalar, .vector => return .init(self.value / other.value),
+                .array => {
                     var new_arr: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_arr[i] = @divTrunc(self.value[i], other.value[i]);
+                    for (&new_arr, self.value, other.value) |*n, s, o| {
+                        n.* = s / o;
                     }
                     return .init(new_arr);
                 },
-                .array_float => {
-                    var new_arr: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_arr[i] = self.value[i] / other.value[i];
-                    }
-                    return .init(new_arr);
-                },
-                .slice_int, .slice_float => @compileError("Cannot divide slice, use divInto instead."),
+                .slice => @compileError("Cannot divide Slice, use divInto instead."),
             }
         }
 
         pub fn divInto(self: Self, other: anytype, out: *Quantity(T, U.div(@TypeOf(other).unit))) void {
-            if (@TypeOf(other.value) != T) {
-                @compileError("To divide quantity, value must match.");
+            comptime {
+                const OtherType = @TypeOf(other);
+                utils.assertIsQuantity(OtherType);
+                const vt = OtherType.value_type;
+                if (vt != T) {
+                    @compileError("Expected Quantity with value type " ++ @typeName(T) ++ " ,got " ++ @typeName(vt) ++ " .");
+                }
             }
-            switch (child_type) {
-                .slice_int => {
-                    std.debug.assert((self.value.len == other.value.len) and (self.value.len == out.value.len));
-                    for (0..self.value.len) |i| {
-                        out.value[i] = @divTrunc(self.value[i], other.value[i]);
-                    }
-                },
-                .slice_float => {
-                    std.debug.assert((self.value.len == other.value.len) and (self.value.len == out.value.len));
-                    for (0..self.value.len) |i| {
-                        out.value[i] = self.value[i] / other.value[i];
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, other.value, out.value) |s, o, *buf| {
+                        buf.* = s / o;
                     }
                 },
                 else => {
@@ -339,22 +343,13 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn divValueInPlace(self: *Self, val: T) void {
-            // This is here because there is no method to divide in place and we cannot use
-            // .div for slices
-            switch (child_type) {
-                .slice_int => {
-                    std.debug.assert((self.value.len == val.len));
-                    for (0..self.value.len) |i| {
-                        self.value[i] = @divTrunc(self.value[i], val[i]);
+            switch (inner_type) {
+                .scalar, .vector => self.value / val,
+                .array, .slice => {
+                    for (self.value, val) |*s, v| {
+                        s.* /= v;
                     }
                 },
-                .slice_float => {
-                    std.debug.assert((self.value.len == val.len));
-                    for (0..self.value.len) |i| {
-                        self.value[i] = self.value[i] / val[i];
-                    }
-                },
-                else => self.* = self.*.divValue(val),
             }
         }
 
@@ -364,9 +359,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn pow(self: Self, comptime value: isize) Quantity(T, U.pow(value)) {
-            switch (child_type) {
-                .int, .float => return .init(math.pow(T, self.value, value)),
-                .vector_int, .vector_float => {
+            switch (inner_type) {
+                .scalar => return .init(math.pow(T, self.value, value)),
+                .vector => {
                     var new_vec: T = self.value;
                     for (0..@abs(value) - 1) |_| {
                         new_vec = new_vec * new_vec;
@@ -377,26 +372,25 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     }
                     return .init(new_vec);
                 },
-                .array_int, .array_float => {
-                    const inner_type: type = @typeInfo(T).array.child;
+                .array => {
+                    const scalar_type: type = @typeInfo(T).array.child;
                     var new_arr: T = undefined;
-                    for (0..self.value.len) |i| {
-                        new_arr[i] = math.pow(inner_type, self.value[i], value);
+                    for (self.value, &new_arr) |s, *n| {
+                        n.* = math.pow(scalar_type, s, value);
                     }
                     return .init(new_arr);
                 },
-                .slice_int, .slice_float => @compileError("Cannot power slice, use powInto instead"),
+                .slice => @compileError("Cannot power Slice, use powInto instead"),
             }
             unreachable;
         }
 
         pub fn powInto(self: Self, comptime value: isize, out: *Quantity(T, U.pow(value))) void {
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == out.value.len);
-                    const inner_type: type = @typeInfo(T).pointer.child;
-                    for (0..self.value.len) |i| {
-                        out.value[i] = math.pow(inner_type, self.value[i], value);
+            switch (inner_type) {
+                .slice => {
+                    const scalar_type: type = @typeInfo(T).pointer.child;
+                    for (self.value, out.value) |s, *buf| {
+                        buf.* = math.pow(scalar_type, s, value);
                     }
                 },
                 else => {
@@ -415,34 +409,33 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn sqrt(self: Self) Quantity(T, U.sqrt()) {
-            switch (child_type) {
-                .int, .float => {
+            switch (inner_type) {
+                .scalar => {
                     if (checkSqrtPanic(self.value)) return .init(@sqrt(self.value));
                 },
-                .vector_int, .vector_float => {
+                .vector => {
                     const zeroes: T = @splat(0);
                     const cmp = self.value <= zeroes;
                     if (@reduce(.Or, cmp)) sqrtPanic();
                     return .init(@sqrt(self.value));
                 },
-                .array_int, .array_float => {
+                .array => {
                     var new_array: T = undefined;
-                    for (0..self.value.len) |i| {
-                        if (checkSqrtPanic(self.value[i])) new_array[i] = @sqrt(self.value[i]);
+                    for (self.value, &new_array) |s, *n| {
+                        if (checkSqrtPanic(s)) n.* = @sqrt(s);
                     }
                     return .init(new_array);
                 },
-                .slice_int, .slice_float => @compileError("Cannot sqrt slice, use sqrtInto instead"),
+                .slice => @compileError("Cannot sqrt Slice, use sqrtInto instead"),
             }
             unreachable;
         }
 
         pub fn sqrtInto(self: Self, out: *Quantity(T, U.sqrt())) void {
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == out.value.len);
-                    for (0..self.value.len) |i| {
-                        if (checkSqrtPanic(self.value[i])) out.value[i] = @sqrt(self.value[i]);
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, out.value) |s, *buf| {
+                        if (checkSqrtPanic(s)) buf.* = @sqrt(s);
                     }
                 },
                 else => out.value = self.sqrt().value,
@@ -459,11 +452,11 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn cbrt(self: Self) Quantity(T, U.cbrt()) {
-            switch (child_type) {
-                .int, .float => {
+            switch (inner_type) {
+                .scalar => {
                     if (checkCbrtPanic(self.value)) return .init(math.cbrt(self.value));
                 },
-                .vector_int, .vector_float => {
+                .vector => {
                     const zeroes: T = @splat(0);
                     const cmp = self.value <= zeroes;
                     if (@reduce(.Or, cmp)) cbrtPanic();
@@ -473,77 +466,76 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     }
                     return .init(new_vec);
                 },
-                .array_int, .array_float => {
+                .array => {
                     var new_arr: T = undefined;
-                    for (0..self.value.len) |i| {
-                        if (checkCbrtPanic(self.value[i])) {
-                            new_arr[i] = math.cbrt(self.value[i]);
+                    for (self.value, &new_arr) |s, *n| {
+                        if (checkCbrtPanic(s)) {
+                            n.* = math.cbrt(s);
                         }
                     }
                     return .init(new_arr);
                 },
-                .slice_int, .slice_float => @compileError("Cannot cbrt slice, use cbrtInto instead"),
+                .slice => @compileError("Cannot cbrt Slice, use cbrtInto instead"),
             }
             unreachable;
         }
 
         pub fn cbrtInto(self: Self, out: *Quantity(T, U.cbrt())) void {
-            switch (child_type) {
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == out.value.len);
-                    for (0..self.value.len) |i| {
-                        if (checkCbrtPanic(self.value[i])) out.value[i] = math.cbrt(self.value[i]);
+            switch (inner_type) {
+                .slice => {
+                    for (self.value, out.value) |s, *buf| {
+                        if (checkCbrtPanic(s)) buf.* = math.cbrt(s);
                     }
                 },
                 else => out.value = self.cbrt().value,
             }
         }
 
-        pub fn setScalarValue(self: *Self, value: getChildTypeScalar(T)) void {
-            switch (child_type) {
-                .int, .float => self.value = value,
-                .vector_int, .vector_float => self.value = @splat(value),
-                .array_int, .array_float => @memset(&self.value, value),
-                .slice_int, .slice_float => @memset(self.value, value),
+        pub fn setScalarValue(self: *Self, value: getInnerTypeScalarType(T)) void {
+            switch (inner_type) {
+                .scalar => self.value = value,
+                .vector => self.value = @splat(value),
+                .array => @memset(&self.value, value),
+                .slice => @memset(self.value, value),
             }
         }
 
-        pub fn reduce(self: Self, comptime op: std.builtin.ReduceOp) Quantity(getChildTypeScalar(T), U) {
-            switch (child_type) {
-                .int, .float => return self,
-                .vector_int, .vector_float => return .init(@reduce(op, self.value)),
+        pub fn reduce(self: Self, comptime op: std.builtin.ReduceOp) Quantity(getInnerTypeScalarType(T), U) {
+            switch (inner_type) {
+                .scalar => return self,
+                .vector => return .init(@reduce(op, self.value)),
                 else => {
-                    const val_type: type = getChildTypeScalar(T);
+                    const scalar_type: type = getInnerTypeScalarType(T);
                     switch (op) {
                         .Add => {
-                            var val: val_type = 0;
-                            for (0..self.value.len) |i| {
-                                val += self.value[i];
+                            var sum: scalar_type = 0;
+                            for (self.value) |s| {
+                                sum += s;
                             }
-                            return .init(val);
+                            return .init(sum);
                         },
                         .Mul => {
-                            var val: val_type = 1;
-                            for (0..self.value.len) |i| {
-                                val *= self.value[i];
+                            var res: scalar_type = 1;
+                            for (self.value) |s| {
+                                res *= s;
                             }
-                            return .init(val);
+                            return .init(res);
                         },
                         .Min => {
-                            var val: val_type = self.value[0];
-                            if (self.value.len == 1) return .init(val);
-                            for (1..self.value.len) |i| {
-                                if (self.value[i] < val) val = self.value[i];
+                            var min: scalar_type = self.value[0];
+                            if (self.value.len == 1) return .init(min);
+                            for (self.value[1..]) |s| {
+                                min = @min(min, s);
                             }
-                            return .init(val);
+                            return .init(min);
                         },
                         .Max => {
-                            var val: val_type = self.value[0];
-                            if (self.value.len == 1) return .init(val);
-                            for (1..self.value.len) |i| {
-                                if (self.value[i] > val) val = self.value[i];
+                            var max: scalar_type = self.value[0];
+                            if (self.value.len == 1) return .init(max);
+                            for (self.value[1..]) |s| {
+                                max = @max(max, s);
                             }
-                            return .init(val);
+                            return .init(max);
                         },
                         else => @compileError("Unsupported reduce operator, supported operator are `Add`, `Mul`, `Min`, `Max`."),
                     }
@@ -551,37 +543,17 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        // The addition of performed with @reduce(.And, ...) will wrap around on integer types
-        // with vector
-        pub fn dot(self: Self, other: anytype) Quantity(getChildTypeScalar(T), U.mul(@TypeOf(other).unit)) {
-            switch (child_type) {
-                .int, .float => return self.mul(other),
-                .vector_int, .vector_float => return .init(self.mul(other).reduce(.Add)),
-                .array_int, .array_float => {
-                    const multiply: Quantity(T, U.mul(@TypeOf(other).unit)) = self.mul(other);
-                    return .init(multiply.reduce(.Add));
-                },
-                .slice_int, .slice_float => {
-                    std.debug.assert(self.value.len == other.value.len);
-                    const val: getChildTypeScalar(T) = 0;
-                    for (0..self.value.len) |i| {
-                        val += self.value[i] * other.value[i];
+        pub fn dot(self: Self, other: anytype) Quantity(getInnerTypeScalarType(T), U.mul(@TypeOf(other).unit)) {
+            switch (inner_type) {
+                .scalar => return self.mul(other),
+                .vector, .array => return self.mul(other).reduce(.Add),
+                .slice => {
+                    const sum: getInnerTypeScalarType(T) = 0;
+                    for (self.value, other.value) |s, o| {
+                        sum += s * o;
                     }
-                    return .init(val);
+                    return .init(sum);
                 },
-            }
-        }
-
-        fn getChildTypeScalar(comptime Ty: type) type {
-            switch (@typeInfo(Ty)) {
-                .int, .float => return Ty,
-                .vector => |vector| return vector.child,
-                .array => |array| return array.child,
-                .pointer => |pointer| switch (pointer.size) {
-                    .slice => return pointer.child,
-                    else => @compileError("Unsupported pointer type"),
-                },
-                else => unreachable,
             }
         }
 
@@ -593,17 +565,10 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             const self_offset: f64 = U.offset orelse 0;
             const unit_offset: f64 = unit_type.offset orelse 0;
             const convert_offset: f64 = (self_offset - unit_offset) / unit_type.scale;
-            switch (child_type) {
-                .int => {
-                    const convert_scale_int: T = @intFromFloat(convert_scale);
-                    const convert_offset_int: T = @intFromFloat(convert_offset);
-                    const multiply = @mulWithOverflow(self.value, convert_scale_int);
-                    if (multiply[1] != 0) @panic("Overflow encounter");
-                    const result = @addWithOverflow(multiply[0], convert_offset_int);
-                    if (result[1] != 0) @panic("Overflow encounter");
-                    return .init(result[0]);
-                },
-                .float => {
+            const scalar_type: type = getInnerTypeScalarType(T);
+
+            switch (inner_type) {
+                .scalar => {
                     if (T != f64) {
                         const convert_scale_float: T = @floatCast(convert_scale);
                         const convert_offset_float: T = @floatCast(convert_offset);
@@ -611,23 +576,10 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     }
                     return .init(@mulAdd(T, self.value, convert_scale, convert_offset));
                 },
-                .vector_int => {
-                    const inner_type: type = @typeInfo(T).vector.child;
-                    const convert_scale_int: inner_type = @intFromFloat(convert_scale);
-                    const convert_offset_int: inner_type = @intFromFloat(convert_offset);
-                    const convert_scale_vec: T = @splat(convert_scale_int);
-                    const convert_offset_vec: T = @splat(convert_offset_int);
-                    const multiply = @mulWithOverflow(self.value, convert_scale_vec);
-                    if (multiply[1] != 0) @panic("Overflow encounter");
-                    const result = @addWithOverflow(multiply[0], convert_offset_vec);
-                    if (result[1] != 0) @panic("Overflow encounter");
-                    return .init(result[0]);
-                },
-                .vector_float => {
-                    const inner_type: type = @typeInfo(T).vector.child;
-                    if (inner_type != f64) {
-                        const convert_scale_float: inner_type = @floatCast(convert_scale);
-                        const convert_offset_float: inner_type = @floatCast(convert_offset);
+                .vector => {
+                    if (scalar_type != f64) {
+                        const convert_scale_float: scalar_type = @floatCast(convert_scale);
+                        const convert_offset_float: scalar_type = @floatCast(convert_offset);
                         const convert_scale_vec: T = @splat(convert_scale_float);
                         const convert_offset_vec: T = @splat(convert_offset_float);
                         return .init(@mulAdd(T, self.value, convert_scale_vec, convert_offset_vec));
@@ -637,42 +589,27 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                         return .init(@mulAdd(T, self.value, convert_scale_vec, convert_offset_vec));
                     }
                 },
-                .array_int => {
-                    const inner_type: type = @typeInfo(T).array.child;
-                    const convert_scale_int: inner_type = @intFromFloat(convert_scale);
-                    const convert_offset_int: inner_type = @intFromFloat(convert_offset);
+                .array => {
                     var new_array: T = undefined;
-                    for (0..self.value.len) |i| {
-                        const multiply = @mulWithOverflow(self.value[i], convert_scale_int);
-                        if (multiply[1] != 0) @panic("Overflow encounter");
-                        const result = @addWithOverflow(multiply[0], convert_offset_int);
-                        if (result[1] != 0) @panic("Overflow encounter");
-                        new_array[i] = result[0];
-                    }
-                    return .init(new_array);
-                },
-                .array_float => {
-                    const inner_type: type = @typeInfo(T).array.child;
-                    var new_array: T = undefined;
-                    if (inner_type != f64) {
-                        const convert_scale_float: inner_type = @floatCast(convert_scale);
-                        const convert_offset_float: inner_type = @floatCast(convert_offset);
-                        for (0..self.value.len) |i| {
-                            new_array[i] = @mulAdd(inner_type, self.value[i], convert_scale_float, convert_offset_float);
+                    if (scalar_type != f64) {
+                        const convert_scale_float: scalar_type = @floatCast(convert_scale);
+                        const convert_offset_float: scalar_type = @floatCast(convert_offset);
+                        for (self.value, &new_array) |s, *n| {
+                            n.* = @mulAdd(scalar_type, s, convert_scale_float, convert_offset_float);
                         }
                         return .init(new_array);
                     }
-                    for (0..self.value.len) |i| {
-                        new_array[i] = @mulAdd(inner_type, self.value[i], convert_scale, convert_offset);
+                    for (self.value, &new_array) |s, *n| {
+                        n.* = @mulAdd(scalar_type, s, convert_scale, convert_offset);
                     }
                     return .init(new_array);
                 },
-                .slice_int, .slice_float => @compileError("Cannot convert slice with to, use toInto instead."),
+                .slice => @compileError("Cannot convert Slice with to, use toInto instead."),
             }
         }
 
-        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
-            return try equivalency.convert(T, U, self, unit_type, args);
+        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, comptime equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
+            return equivalency.convert(T, U, self, unit_type, args);
         }
 
         pub fn toInto(self: Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) void {
@@ -683,32 +620,18 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             const self_offset: f64 = U.offset orelse 0;
             const unit_offset: f64 = unit_type.offset orelse 0;
             const convert_offset = self_offset - unit_offset;
-            switch (child_type) {
-                .slice_int => {
-                    std.debug.assert(self.value.len == out.value.len);
-                    const inner_type = @typeInfo(T).pointer.child;
-                    const convert_scale_int: inner_type = @intFromFloat(convert_scale);
-                    const convert_offset_int: inner_type = @intFromFloat(convert_offset);
-                    for (0..self.value.len) |i| {
-                        const multiply = @mulWithOverflow(self.value[i], convert_scale_int);
-                        if (multiply[1] != 0) @panic("Overflow encounter");
-                        const result = @addWithOverflow(multiply[0], convert_offset_int);
-                        if (result[1] != 0) @panic("Overflow encounter");
-                        out.value[i] = result[0];
-                    }
-                },
-                .slice_float => {
-                    std.debug.assert(self.value.len == out.value.len);
-                    const inner_type: type = @typeInfo(T).pointer.child;
-                    if (inner_type != f64) {
-                        const convert_scale_float: inner_type = @floatCast(convert_scale);
-                        const convert_offset_float: inner_type = @floatCast(convert_offset);
-                        for (0..self.value.len) |i| {
-                            out.value[i] = @mulAdd(inner_type, self.value[i], convert_scale_float, convert_offset_float);
+            switch (inner_type) {
+                .slice => {
+                    const scalar_type: type = getInnerTypeScalarType(T);
+                    if (scalar_type != f64) {
+                        const convert_scale_float: scalar_type = @floatCast(convert_scale);
+                        const convert_offset_float: scalar_type = @floatCast(convert_offset);
+                        for (self.value, out.value) |s, *buf| {
+                            buf.* = @mulAdd(scalar_type, s, convert_scale_float, convert_offset_float);
                         }
                     } else {
-                        for (0..self.value.len) |i| {
-                            out.value[i] = @mulAdd(inner_type, self.value[i], convert_scale, convert_offset);
+                        for (self.value, out.value) |s, *buf| {
+                            buf.* = @mulAdd(scalar_type, s, convert_scale, convert_offset);
                         }
                     }
                 },
@@ -717,32 +640,22 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         }
 
         pub fn decompose(self: Self, comptime system: System) Quantity(T, U.decompose(system)) {
-            switch (child_type) {
-                .int, .float, .vector_int, .vector_float => return .init(self.value * U.scale),
-                .array_int, .array_float => {
+            switch (inner_type) {
+                .scalar, .vector => return .init(self.value * U.scale),
+                .array => {
                     var new_arr = self.value;
-                    for (0..self.value.len) |i| {
-                        new_arr[i] *= U.scale;
+                    for (&new_arr) |*n| {
+                        n.* *= U.scale;
                     }
                     return .init(new_arr);
                 },
-                .slice_int, .slice_float => @compileError("Cannot convert slice with decompose, use decomposeInto instead."),
+                .slice => @compileError("Cannot convert Slice with decompose, use decomposeInto instead."),
             }
         }
 
         pub fn decomposeInto(self: Self, comptime system: System, out: *Quantity(T, U.decompose(system))) void {
-            std.debug.assert(self.value.len == out.value.len);
-            for (0..self.value.len) |i| {
-                out.value[i] = self.value[i] * U.scale;
-            }
-        }
-
-        fn printQuantityInt(writer: *std.Io.Writer, comptime Ty: type, value: Ty) std.Io.Writer.Error!void {
-            if (@abs(value) > 1000000) {
-                const f: f64 = @floatFromInt(value);
-                try writer.print("{e}", .{f});
-            } else {
-                try writer.print("{d}", .{value});
+            for (self.value, out.value) |s, *buf| {
+                buf.* = s * U.scale;
             }
         }
 
@@ -754,167 +667,49 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        fn formatIterable(self: *const Self, writer: *std.Io.Writer, comptime str: []const u8, len: usize) std.Io.Writer.Error!void {
+            const scalar_type: type = getInnerTypeScalarType(T);
+            if (len <= 3) {
+                try writer.writeAll(str);
+                for (0..len) |i| {
+                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    if (i != len - 1) try writer.writeByte(',');
+                    try writer.writeByte(' ');
+                }
+                try writer.print("}} {f}", .{U.symbol});
+            } else {
+                try writer.writeAll(str);
+                for (0..2) |i| {
+                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    try writer.writeAll(", ");
+                }
+                try writer.writeAll("... ");
+                for (len - 2..len) |i| {
+                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    if (i != len - 1) try writer.writeByte(',');
+                    try writer.writeByte(' ');
+                }
+                try writer.print("}} {f}", .{U.symbol});
+            }
+        }
+
         pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            switch (child_type) {
-                .int => {
-                    try printQuantityInt(writer, T, self.value);
-                    try writer.print(" {f}", .{U.symbol});
-                },
-                .float => {
+            switch (inner_type) {
+                .scalar => {
                     try printQuantityFloat(writer, T, self.value);
                     try writer.print(" {f}", .{U.symbol});
                 },
-                .vector_int => {
-                    const inner_type: type = @typeInfo(T).vector.child;
+                .vector => {
                     const len = @typeInfo(T).vector.len;
-                    if (len <= 3) {
-                        try writer.writeAll("@Vector { ");
-                        for (0..len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Vector { ");
-                        for (0..2) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (len - 2..len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
+                    try self.formatIterable(writer, "Vector: { ", len);
                 },
-                .vector_float => {
-                    const inner_type: type = @typeInfo(T).vector.child;
-                    const len = @typeInfo(T).vector.len;
-                    if (self.value.len <= 3) {
-                        try writer.writeAll("@Vector { ");
-                        for (0..len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Vector { ");
-                        for (0..2) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (len - 2..len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
+                .array => {
+                    const len = self.value.len;
+                    try self.formatIterable(writer, "Array: { ", len);
                 },
-                .array_int => {
-                    const inner_type: type = @typeInfo(T).array.child;
-                    if (self.value.len <= 3) {
-                        try writer.writeAll("@Array { ");
-                        for (0..self.value.len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Array { ");
-                        for (0..2) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (self.value.len - 2..self.value.len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
-                },
-                .array_float => {
-                    const inner_type: type = @typeInfo(T).array.child;
-                    if (self.value.len <= 3) {
-                        try writer.writeAll("@Array { ");
-                        for (0..self.value.len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Array { ");
-                        for (0..2) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (self.value.len - 2..self.value.len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
-                },
-                .slice_int => {
-                    const inner_type: type = @typeInfo(T).pointer.child;
-                    if (self.value.len <= 3) {
-                        try writer.writeAll("@Slice { ");
-                        for (0..self.value.len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Slice { ");
-                        for (0..2) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (self.value.len - 2..self.value.len) |i| {
-                            try printQuantityInt(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
-                },
-                .slice_float => {
-                    const inner_type: type = @typeInfo(T).pointer.child;
-                    if (self.value.len <= 3) {
-                        try writer.writeAll("@Slice { ");
-                        for (0..self.value.len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    } else {
-                        try writer.writeAll("@Slice { ");
-                        for (0..2) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            try writer.writeAll(", ");
-                        }
-                        try writer.writeAll("... ");
-                        for (self.value.len - 2..self.value.len) |i| {
-                            try printQuantityFloat(writer, inner_type, self.value[i]);
-                            if (i != self.value.len - 1) try writer.writeByte(',');
-                            try writer.writeByte(' ');
-                        }
-                        try writer.print("}} {f}", .{U.symbol});
-                    }
+                .slice => {
+                    const len = self.value.len;
+                    try self.formatIterable(writer, "Slice: { ", len);
                 },
             }
         }
@@ -928,20 +723,21 @@ test "init" {
 }
 
 test "add" {
-    //float and int
-    const time1 = Quantity(u64, si.s).init(10);
-    const time2 = Quantity(u64, si.s).init(15);
+    //float
+    const time1 = Quantity(f64, si.s).init(10);
+    const time2 = Quantity(f64, si.s).init(15);
     const timeRes = time1.add(time2);
-    try testing.expectEqual(timeRes.value, 25);
+    try testing.expectApproxEqAbs(timeRes.value, 25, 1e-15);
 
     // vector
-    const vec1 = @Vector(2, i64){ 2, 4 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    const quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
+    const vec1 = @Vector(2, f64){ 2, 4 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    const quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
     const added = quantity1.add(quantity2);
-    const exp: @Vector(2, i64) = .{ 5, 9 };
-    try testing.expectEqual(exp, added.value);
+    const val: [2]f64 = added.value;
+    const exp: [2]f64 = .{ 5, 9 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const arr1: [3]f64 = .{ 1.1, 2.2, 3.3 };
@@ -954,20 +750,21 @@ test "add" {
 }
 
 test "addInPlace" {
-    //float and int
-    var time1 = Quantity(u32, si.s).init(15);
-    const time2 = Quantity(u32, si.s).init(5);
+    //float
+    var time1 = Quantity(f32, si.s).init(15);
+    const time2 = Quantity(f32, si.s).init(5);
     time1.addInPlace(time2);
-    try testing.expectEqual(time1.value, 20);
+    try testing.expectApproxEqAbs(20, time1.value, 1e-15);
 
     // vector
-    const vec1 = @Vector(2, i64){ 2, 4 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    var quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
+    const vec1 = @Vector(2, f64){ 2, 4 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    var quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
     quantity1.addInPlace(quantity2);
-    const exp: @Vector(2, i64) = .{ 5, 9 };
-    try testing.expectEqual(exp, quantity1.value);
+    const val: [2]f64 = quantity1.value;
+    const exp: [2]f64 = .{ 5, 9 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const arr1: [3]f64 = .{ 1.1, 2.2, 3.3 };
@@ -980,7 +777,7 @@ test "addInPlace" {
 }
 
 test "addInto" {
-    // float and int
+    // float
     const q1: Quantity(f64, si.m) = .init(3.3);
     const q2: Quantity(f64, si.m) = .init(2.2);
     var q_dest: Quantity(f64, si.m) = .init(undefined);
@@ -989,56 +786,58 @@ test "addInto" {
 
     // slice
     const allocator = testing.allocator;
-    const list_type = std.ArrayList(u8);
+    const list_type = std.ArrayList(f64);
     var list_1 = try list_type.initCapacity(allocator, 2);
     defer list_1.deinit(allocator);
     var list_2 = try list_type.initCapacity(allocator, 2);
     defer list_2.deinit(allocator);
-    list_1.appendSliceAssumeCapacity(&[2]u8{ 1, 2 });
-    list_2.appendSliceAssumeCapacity(&[2]u8{ 2, 3 });
-    const q_list_1: Quantity([]u8, si.m) = .init(list_1.items);
-    const q_list_2: Quantity([]u8, si.m) = .init(list_2.items);
+    list_1.appendSliceAssumeCapacity(&[2]f64{ 1, 2 });
+    list_2.appendSliceAssumeCapacity(&[2]f64{ 2, 3 });
+    const q_list_1: Quantity([]f64, si.m) = .init(list_1.items);
+    const q_list_2: Quantity([]f64, si.m) = .init(list_2.items);
     var list_dest = try list_type.initCapacity(allocator, 2);
     defer list_dest.deinit(allocator);
     try list_dest.resize(allocator, 2);
-    var q_list_dest: Quantity([]u8, si.m) = .init(list_dest.items);
+    var q_list_dest: Quantity([]f64, si.m) = .init(list_dest.items);
     q_list_1.addInto(q_list_2, &q_list_dest);
-    try testing.expectEqualSlices(u8, &[_]u8{ 3, 5 }, q_list_dest.value);
+    try zatest.expectApproxEqAbsIter(&[_]f64{ 3, 5 }, q_list_dest.value, 1e-15);
     try testing.expectEqual(si.m, @TypeOf(q_list_dest).unit);
 }
 
 test "add value methods" {
-    const q1: Quantity(u8, si.m) = .init(5);
+    const q1: Quantity(f64, si.m) = .init(5);
     const q_add1 = q1.addValue(3);
-    try testing.expectEqual(8, q_add1.value);
+    try testing.expectApproxEqAbs(8, q_add1.value, 1e-15);
     try testing.expectEqual(q1.getUnit(), q_add1.getUnit());
 
-    var q2: Quantity(@Vector(3, u8), si.s) = .init(.{ 3, 4, 5 });
+    var q2: Quantity(@Vector(3, f32), si.s) = .init(.{ 3, 4, 5 });
     q2.addValueInPlace(.{ 3, 4, 5 });
-    try testing.expectEqual(@Vector(3, u8){ 6, 8, 10 }, q2.value);
+    const val: [3]f32 = q2.value;
+    try zatest.expectApproxEqAbsIter([3]f32{ 6, 8, 10 }, val, 1e-15);
 
-    var buf: [3]u16 = undefined;
-    const q3: Quantity([]u16, si.Bq) = .init(@constCast(&[3]u16{ 10, 20, 30 }));
-    var q_add3: Quantity([]u16, si.Bq) = .init(&buf);
-    q3.addValueInto(@constCast(&[3]u16{ 40, 50, 60 }), &q_add3);
-    try testing.expectEqualSlices(u16, @constCast(&[3]u16{ 50, 70, 90 }), q_add3.value);
+    var buf: [3]f64 = undefined;
+    const q3: Quantity([]f64, si.Bq) = .init(@constCast(&[3]f64{ 10, 20, 30 }));
+    var q_add3: Quantity([]f64, si.Bq) = .init(&buf);
+    q3.addValueInto(@constCast(&[3]f64{ 40, 50, 60 }), &q_add3);
+    try zatest.expectApproxEqAbsIter(@constCast(&[3]f64{ 50, 70, 90 }), q_add3.value, 1e-15);
 }
 
 test "sub" {
-    //float and int
-    const size1 = Quantity(u8, si.AA).init(12);
-    const size2 = Quantity(u8, si.AA).init(3);
+    //float
+    const size1 = Quantity(f64, si.AA).init(12);
+    const size2 = Quantity(f64, si.AA).init(3);
     const sizeRes = size1.sub(size2);
-    try testing.expectEqual(sizeRes.value, 9);
+    try testing.expectApproxEqAbs(sizeRes.value, 9, 1e-15);
 
     // vector
-    const vec1 = @Vector(2, i64){ 2, 4 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    const quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
+    const vec1 = @Vector(2, f64){ 2, 4 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    const quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
     const subbed = quantity1.sub(quantity2);
-    const exp: @Vector(2, i64) = .{ -1, -1 };
-    try testing.expectEqual(exp, subbed.value);
+    const val: [2]f64 = subbed.value;
+    const exp: [2]f64 = .{ -1, -1 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const arr1: [3]f64 = .{ 1.1, 2.2, 3.3 };
@@ -1051,20 +850,21 @@ test "sub" {
 }
 
 test "subInPlace" {
-    //float and int
-    var freq1 = Quantity(i32, si.Hz).init(50);
-    const freq2 = Quantity(i32, si.Hz).init(70);
+    //float
+    var freq1 = Quantity(f32, si.Hz).init(50);
+    const freq2 = Quantity(f32, si.Hz).init(70);
     freq1.subInPlace(freq2);
-    try testing.expectEqual(freq1.value, -20);
+    try testing.expectApproxEqAbs(freq1.value, -20, 1e-15);
 
     // vector
-    const vec1 = @Vector(2, i64){ 2, 4 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    var quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
+    const vec1 = @Vector(2, f64){ 2, 4 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    var quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
     quantity1.subInPlace(quantity2);
-    const exp: @Vector(2, i64) = .{ -1, -1 };
-    try testing.expectEqual(exp, quantity1.value);
+    const val: [2]f64 = quantity1.value;
+    const exp: [2]f64 = .{ -1, -1 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const arr1: [3]f64 = .{ 1.1, 2.2, 3.3 };
@@ -1090,14 +890,14 @@ test "subInto" {
 }
 
 test "sub value methods" {
-    const q1: Quantity(i32, si.N) = .init(-33);
+    const q1: Quantity(f32, si.N) = .init(-33);
     const q_sub1 = q1.subValue(15);
-    try testing.expectEqual(-48, q_sub1.value);
+    try testing.expectApproxEqAbs(-48, q_sub1.value, 1e-15);
     try testing.expectEqual(q1.getUnit(), q_sub1.getUnit());
 
-    var q2: Quantity([3]u8, si.mol) = .init(.{ 3, 3, 3 });
+    var q2: Quantity([3]f64, si.mol) = .init(.{ 3, 3, 3 });
     q2.addValueInPlace(.{ 4, 5, 6 });
-    try testing.expectEqual([3]u8{ 7, 8, 9 }, q2.value);
+    try zatest.expectApproxEqAbsIter([3]f64{ 7, 8, 9 }, q2.value, 1e-15);
 
     var buf: [2]f32 = undefined;
     const q3: Quantity([]f32, si.kg) = .init(@constCast(&[2]f32{ 3.3, 4.4 }));
@@ -1107,7 +907,7 @@ test "sub value methods" {
 }
 
 test "mul" {
-    // float and int
+    // float
     const size1 = Quantity(f64, si.m).init(10);
     const size2 = Quantity(f64, si.m).init(3);
     const area = size1.mul(size2);
@@ -1115,13 +915,14 @@ test "mul" {
     try testing.expectEqual(si.m.mul(si.m), @TypeOf(area).unit);
 
     // vector
-    const vec1 = @Vector(2, i64){ 2, 4 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    const quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
-    const mulitpied = quantity1.mul(quantity2);
-    const exp: @Vector(2, i64) = .{ 6, 20 };
-    try testing.expectEqual(exp, mulitpied.value);
+    const vec1 = @Vector(2, f64){ 2, 4 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    const quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
+    const multiplied = quantity1.mul(quantity2);
+    const val: [2]f64 = multiplied.value;
+    const exp: [2]f64 = .{ 6, 20 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const arr1: [3]f64 = .{ 1.1, 2.2, 3.3 };
@@ -1135,38 +936,38 @@ test "mul" {
 
 test "mulInto" {
     // slice
-    var arr1: [3]usize = .{ 1, 2, 3 };
-    var arr2: [3]usize = .{ 2, 3, 4 };
-    var buf: [3]usize = undefined;
-    const q1: Quantity([]usize, si.m) = .init(&arr1);
-    const q2: Quantity([]usize, si.s) = .init(&arr2);
-    var action: Quantity([]usize, si.m.mul(si.s)) = .init(&buf);
+    var arr1: [3]f64 = .{ 1, 2, 3 };
+    var arr2: [3]f64 = .{ 2, 3, 4 };
+    var buf: [3]f64 = undefined;
+    const q1: Quantity([]f64, si.m) = .init(&arr1);
+    const q2: Quantity([]f64, si.s) = .init(&arr2);
+    var action: Quantity([]f64, si.m.mul(si.s)) = .init(&buf);
     q1.mulInto(q2, &action);
-    try testing.expectEqualSlices(usize, &[_]usize{ 2, 6, 12 }, action.value);
+    try zatest.expectApproxEqAbsIter(&[_]f64{ 2, 6, 12 }, action.value, 1e-15);
     try testing.expectEqual(si.m.mul(si.s), @TypeOf(action).unit);
 }
 
 test "mul value methods" {
-    const q1: Quantity(u16, si.mm) = .init(32);
+    const q1: Quantity(f64, si.mm) = .init(32);
     const q_mul1 = q1.mulValue(10);
-    try testing.expectEqual(320, q_mul1.value);
+    try testing.expectApproxEqAbs(320, q_mul1.value, 1e-15);
     try testing.expectEqual(q1.getUnit(), q_mul1.getUnit());
 
-    var q2: Quantity([3]u8, si.kg) = .init(.{ 1, 2, 3 });
+    var q2: Quantity([3]f64, si.kg) = .init(.{ 1, 2, 3 });
     q2.mulValueInPlace(.{ 10, 10, 10 });
-    try testing.expectEqual([3]u8{ 10, 20, 30 }, q2.value);
+    try zatest.expectApproxEqAbsIter([3]f64{ 10, 20, 30 }, q2.value, 1e-15);
     try testing.expectEqual(si.kg, q2.getUnit());
 
-    var buf: [1]i16 = undefined;
-    const q3: Quantity([]i16, si.deg) = .init(@constCast(&[1]i16{-20}));
-    var q_mul3: Quantity([]i16, si.deg) = .init(&buf);
-    q3.mulValueInto(@constCast(&[1]i16{-4}), &q_mul3);
-    try testing.expectEqualSlices(i16, @constCast(&[_]i16{80}), q_mul3.value);
+    var buf: [1]f64 = undefined;
+    const q3: Quantity([]f64, si.deg) = .init(@constCast(&[1]f64{-20}));
+    var q_mul3: Quantity([]f64, si.deg) = .init(&buf);
+    q3.mulValueInto(@constCast(&[1]f64{-4}), &q_mul3);
+    try zatest.expectApproxEqAbsIter(@constCast(&[_]f64{80}), q_mul3.value, 1e-15);
     try testing.expectEqual(si.deg, q_mul3.getUnit());
 }
 
 test "div" {
-    // float and int
+    // float
     const size = Quantity(f64, si.m).init(5);
     const time = Quantity(f64, si.s).init(2);
     const speed = size.div(time);
@@ -1174,13 +975,14 @@ test "div" {
     try testing.expectEqual(si.m.div(si.s), @TypeOf(speed).unit);
 
     // vector
-    const vec1 = @Vector(2, i64){ 9, 20 };
-    const vec2 = @Vector(2, i64){ 3, 5 };
-    const quantity1: Quantity(@Vector(2, i64), si.AA) = .init(vec1);
-    const quantity2: Quantity(@Vector(2, i64), si.AA) = .init(vec2);
+    const vec1 = @Vector(2, f64){ 9, 20 };
+    const vec2 = @Vector(2, f64){ 3, 5 };
+    const quantity1: Quantity(@Vector(2, f64), si.AA) = .init(vec1);
+    const quantity2: Quantity(@Vector(2, f64), si.AA) = .init(vec2);
     const divided = quantity1.div(quantity2);
-    const exp: @Vector(2, i64) = .{ 3, 4 };
-    try testing.expectEqual(exp, divided.value);
+    const val: [2]f64 = divided.value;
+    const exp: [2]f64 = .{ 3, 4 };
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
     const size_arr: [2]f32 = .{ 2, 5 };
@@ -1194,21 +996,22 @@ test "div" {
 
 test "divInto" {
     // slice
-    var arr1: [1]i32 = .{-1};
-    var arr2: [1]i32 = .{2};
-    var buf: [1]i32 = .{3}; // check that it overwrite
-    const q1: Quantity([]i32, si.m) = .init(&arr1);
-    const q2: Quantity([]i32, si.s) = .init(&arr2);
-    var speed: Quantity([]i32, si.m.div(si.s)) = .init(&buf);
+    var arr1: [1]f32 = .{-1};
+    var arr2: [1]f32 = .{2};
+    var buf: [1]f32 = .{3};
+    const q1: Quantity([]f32, si.m) = .init(&arr1);
+    const q2: Quantity([]f32, si.s) = .init(&arr2);
+    var speed: Quantity([]f32, si.m.div(si.s)) = .init(&buf);
     q1.divInto(q2, &speed);
-    try testing.expectEqual(0, speed.value[0]);
+    try testing.expectApproxEqAbs(-0.5, speed.value[0], 1e-15);
     try testing.expectEqual(si.m.div(si.s), @TypeOf(speed).unit);
 }
 
 test "div value methods" {
-    const q1: Quantity(@Vector(2, u32), si.kg) = .init(.{ 10, 20 });
+    const q1: Quantity(@Vector(2, f32), si.kg) = .init(.{ 10, 20 });
     const q_div1 = q1.divValue(@splat(2));
-    try testing.expectEqual(@Vector(2, u32){ 5, 10 }, q_div1.value);
+    const val: [2]f32 = q_div1.value;
+    try zatest.expectApproxEqAbsIter([2]f32{ 5, 10 }, val, 1e-15);
     try testing.expectEqual(q1.getUnit(), q_div1.getUnit());
 
     var buf1: [2]f32 = .{ 15, 25 };
@@ -1225,14 +1028,14 @@ test "div value methods" {
 }
 
 test "pow" {
-    // float and int
-    const q1: Quantity(i16, si.kg) = .init(3);
+    // float
+    const q1: Quantity(f64, si.kg) = .init(3);
     const q1_pow = q1.pow(2);
-    try testing.expectEqual(9, q1_pow.value);
+    try testing.expectApproxEqAbs(9, q1_pow.value, 1e-15);
     try testing.expectEqual(si.kg.pow(2), @TypeOf(q1_pow).unit);
     const q2: Quantity(f32, si.m) = .init(15.5);
     const q2_pow = q2.pow(3);
-    try testing.expectEqual(3723.875, q2_pow.value);
+    try testing.expectApproxEqAbs(3723.875, q2_pow.value, 1e-15);
 
     // vector
     const q3: Quantity(@Vector(3, f64), si.s) = .init(.{ 2, 4, 6 });
@@ -1247,17 +1050,17 @@ test "pow" {
 
 test "powInto" {
     // slice
-    var arr1: [3]u8 = .{ 2, 3, 4 };
-    var arr2: [3]u8 = undefined;
-    const q1: Quantity([]u8, si.s) = .init(&arr1);
-    var q_pow: Quantity([]u8, si.s.pow(2)) = .init(&arr2);
+    var arr1: [3]f64 = .{ 2, 3, 4 };
+    var arr2: [3]f64 = undefined;
+    const q1: Quantity([]f64, si.s) = .init(&arr1);
+    var q_pow: Quantity([]f64, si.s.pow(2)) = .init(&arr2);
     q1.powInto(2, &q_pow);
-    try testing.expectEqualSlices(u8, &[3]u8{ 4, 9, 16 }, q_pow.value);
+    try zatest.expectApproxEqAbsIter(&[3]f64{ 4, 9, 16 }, q_pow.value, 1e-15);
     try testing.expectEqual(si.s.pow(2), @TypeOf(q_pow).unit);
 }
 
 test "sqrt" {
-    // float and int
+    // float
     const q1: Quantity(f64, si.m) = .init(9);
     const q1_sqrt = q1.sqrt();
     try testing.expectEqual(3, q1_sqrt.value);
@@ -1341,7 +1144,30 @@ test "to" {
     try testing.expectApproxEqAbs(255.37222222222223, temp_F_to_K.value, 1e-15);
 }
 
-test "toWithEquivalency" {}
+test "toWithEquivalency" {
+    // float
+    const freq: Quantity(f64, si.Hz) = .init(1e9);
+    const wavelength = freq.toWithEquivalency(si.nm, .spectral, .{});
+    try testing.expectApproxEqAbs(299792458, wavelength.value, 1e-15);
+    try testing.expectEqual(si.nm, wavelength.getUnit());
+
+    // vector
+    const vec: @Vector(2, f64) = .{ 9.1093837015e-31, 1.67262192369e-27 };
+    const mass: Quantity(@Vector(2, f64), si.kg) = .init(vec);
+    const energy = mass.toWithEquivalency(si.J, .mass_energy, .{});
+    const expected: @Vector(2, f64) = .{ 8.187105776e-14, 1.503277615e-10 };
+    const val: [2]f64 = energy.value;
+    const exp: [2]f64 = expected;
+    try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
+
+    // array
+    const rest_freq: Quantity([3]f64, us.GHz) = .initScalarValue(1.420405751768);
+    const velocities: [3]f64 = .{ 0.0, 1000.0, -1000.0 };
+    const freq_arr: Quantity([3]f64, us.km.div(si.s)) = .init(velocities);
+    const as_freq = freq_arr.toWithEquivalency(us.GHz, .doppler_radio, .{rest_freq});
+    const expected_2: [3]f64 = .{ 1.420405751768, 1.4156677881739728, 1.4251437153620274};
+    try zatest.expectApproxEqAbsIter(expected_2, as_freq.value, 1e-15);
+}
 
 test "toInto" {
     const q1: Quantity([]f64, si.m) = .init(@constCast(&[2]f64{ 1, 2 }));
@@ -1353,15 +1179,15 @@ test "toInto" {
 
 test "reduce" {
     // Add
-    const q1: Quantity(u32, si.AA) = .init(23);
-    const q1_red: Quantity(u32, si.AA) = q1.reduce(.Add);
-    try testing.expectEqual(23, q1_red.value);
+    const q1: Quantity(f32, si.AA) = .init(23);
+    const q1_red: Quantity(f32, si.AA) = q1.reduce(.Add);
+    try testing.expectApproxEqAbs(23, q1_red.value, 1e-15);
     try testing.expectEqual(si.AA, @TypeOf(q1_red).unit);
 
     // Mul
-    const q2: Quantity(@Vector(3, i32), si.mas) = .init(.{ 2, -4, 10 });
+    const q2: Quantity(@Vector(3, f32), si.mas) = .init(.{ 2, -4, 10 });
     const q2_red = q2.reduce(.Mul);
-    try testing.expectEqual(-80, q2_red.value);
+    try testing.expectApproxEqAbs(-80, q2_red.value, 1e-15);
     try testing.expectEqual(si.mas, @TypeOf(q2_red).unit);
 
     // Min
@@ -1410,7 +1236,7 @@ test "decomposeInto" {
 test "format" {
     const allocator = std.testing.allocator;
 
-    const q1: Quantity(u64, si.s) = .init(2000000);
+    const q1: Quantity(f64, si.s) = .init(2000000);
     const print1 = try std.fmt.allocPrint(allocator, "{f}", .{q1});
     try testing.expectEqualSlices(u8, "2e6 s", print1);
     allocator.free(print1);
@@ -1420,52 +1246,54 @@ test "format" {
     try testing.expectEqualSlices(u8, "1.2094484932943e12 kg", print2);
     allocator.free(print2);
 
-    const q3: Quantity(@Vector(3, u16), si.Hz) = .init(.{ 440, 880, 1760 });
+    const q3: Quantity(@Vector(3, f64), si.Hz) = .init(.{ 440, 880, 1760 });
     const print3 = try std.fmt.allocPrint(allocator, "{f}", .{q3});
-    try testing.expectEqualSlices(u8, "@Vector { 440, 880, 1760 } Hz", print3);
+    try testing.expectEqualSlices(u8, "Vector: { 440, 880, 1760 } Hz", print3);
     allocator.free(print3);
 
     const q4: Quantity([5]f32, si.T) = .init(.{ 2.3, 45, 1.5e7, 1345, 0.0004 });
     const print4 = try std.fmt.allocPrint(allocator, "{f}", .{q4});
-    try std.testing.expectEqualSlices(u8, "@Array { 2.3, 45, ... 1345, 4e-4 } T", print4);
+    try std.testing.expectEqualSlices(u8, "Array: { 2.3, 45, ... 1345, 4e-4 } T", print4);
     allocator.free(print4);
 
-    const q5: Quantity([]u8, si.Pa.div(si.s)) = .init(@constCast(&[2]u8{ 3, 7 }));
+    const q5: Quantity([]f64, si.Pa.div(si.s)) = .init(@constCast(&[2]f64{ 3, 7 }));
     const print5 = try std.fmt.allocPrint(allocator, "{f}", .{q5});
-    try std.testing.expectEqualSlices(u8, "@Slice { 3, 7 } Pa s-1", print5);
+    try std.testing.expectEqualSlices(u8, "Slice: { 3, 7 } Pa s-1", print5);
     allocator.free(print5);
 }
 
 test "initScalarValue" {
-    // Int, Float
-    const q1: Quantity(u32, si.m) = .initScalarValue(4);
-    try testing.expectEqual(4, q1.value);
+    // float
+    const q1: Quantity(f32, si.m) = .initScalarValue(4);
+    try testing.expectApproxEqAbs(4, q1.value, 1e-15);
 
     // Vector
-    const q2: Quantity(@Vector(2, u32), si.Pa) = .initScalarValue(2);
-    try testing.expectEqual(@Vector(2, u32){ 2, 2 }, q2.value);
+    const q2: Quantity(@Vector(2, f32), si.Pa) = .initScalarValue(2);
+    const val: [2]f32 = q2.value;
+    try zatest.expectApproxEqAbsIter([2]f32{ 2, 2 }, val, 1e-15);
 
     // Array
-    const q3: Quantity([2]u32, si.Pa) = .initScalarValue(3);
-    try testing.expectEqual([2]u32{ 3, 3 }, q3.value);
+    const q3: Quantity([2]f32, si.Pa) = .initScalarValue(3);
+    try zatest.expectApproxEqAbsIter([2]f32{ 3, 3 }, q3.value, 1e-15);
 }
 
 test "initScalarValueWithBuf" {
-    var buf: [3]u8 = undefined;
-    const q: Quantity([]u8, si.m) = .initScalarValueWithBuf(10, &buf);
-    try testing.expectEqualSlices(u8, @constCast(&[3]u8{ 10, 10, 10 }), q.value);
+    var buf: [3]f32 = undefined;
+    const q: Quantity([]f32, si.m) = .initScalarValueWithBuf(10, &buf);
+    try zatest.expectApproxEqAbsIter(@constCast(&[3]f32{ 10, 10, 10 }), q.value, 1e-15);
 }
 
 test "setScalarValue" {
-    // Int, Float
-    var q1: Quantity(u32, si.m) = .init(0);
+    // float
+    var q1: Quantity(f32, si.m) = .init(0);
     q1.setScalarValue(3);
-    try testing.expectEqual(3, q1.value);
+    try testing.expectApproxEqAbs(3, q1.value, 1e-15);
 
     // Vector
-    var q2: Quantity(@Vector(3, usize), si.s) = .init(.{ 1, 2, 3 });
+    var q2: Quantity(@Vector(3, f64), si.s) = .init(.{ 1, 2, 3 });
     q2.setScalarValue(5);
-    try testing.expectEqual(@Vector(3, usize){ 5, 5, 5 }, q2.value);
+    const val: [3]f64 = q2.value;
+    try zatest.expectApproxEqAbsIter([3]f64{ 5, 5, 5 }, val, 1e-15);
 
     // Array
     var q3: Quantity([2]f64, si.a) = .init(.{ 3.0, 6.0 });
@@ -1473,8 +1301,8 @@ test "setScalarValue" {
     try zatest.expectApproxEqAbsIter([2]u8{ 10.0, 10.0 }, q3.value, 1e-15);
 
     // Slice
-    var buf: [4]u8 = undefined;
-    var q4: Quantity([]u8, si.Hz) = .init(&buf);
+    var buf: [4]f32 = undefined;
+    var q4: Quantity([]f32, si.Hz) = .init(&buf);
     q4.setScalarValue(12);
-    try testing.expectEqualSlices(u8, @constCast(&[4]u8{ 12, 12, 12, 12 }), q4.value);
+    try zatest.expectApproxEqAbsIter(@constCast(&[4]u8{ 12, 12, 12, 12 }), q4.value, 1e-15);
 }
