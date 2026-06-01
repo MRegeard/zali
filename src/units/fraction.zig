@@ -3,12 +3,29 @@ const testing = std.testing;
 const math = std.math;
 const debug = std.debug;
 
+/// Errors that fraction arithmetic can produce.
+/// - `Overflow`: an intermediate numerator or denominator exceeded the range of `T`.
+/// - `ZeroDenominator`: a zero denominator was supplied or would result.
+/// - `ImpossibleConversionToInt`: a non-integer fraction was asked to convert to an integer.
 pub const FractionError = error{
     Overflow,
     ZeroDenominator,
     ImpossibleConversionToInt,
 };
 
+/// An exact rational number `num/denum`, generic over a signed integer type `T`.
+///
+/// Fractions are used throughout the unit system to represent dimension exponents,
+/// so that operations like square root (exponent / 2) or cube root (exponent / 3)
+/// stay exact rather than drifting in floating point. Values are kept in reduced
+/// form (lowest terms, denominator positive) after every operation.
+///
+/// Arithmetic methods return `FractionError` because the cross-multiplication used
+/// to add or multiply fractions can overflow `T`. In practice the exponents that
+/// occur in physical units are tiny, so overflow is effectively impossible; the
+/// error is surfaced anyway for correctness. Most operations come in both a pure
+/// and an `InPlace` form, plus a `*Scalar` convenience form that operates with a
+/// whole integer.
 pub fn Fraction(comptime T: type) type {
     comptime {
         const typeInfo = @typeInfo(T);
@@ -28,6 +45,8 @@ pub fn Fraction(comptime T: type) type {
 
         pub const Error = FractionError;
 
+        /// Constructs a reduced fraction `num/denum`. Returns `ZeroDenominator` if
+        /// `denum` is zero. The result is always normalized to lowest terms.
         pub fn init(num: T, denum: T) Error!Self {
             if (denum == 0) return Error.ZeroDenominator;
             if (num < 0 and denum < 0) {
@@ -36,20 +55,26 @@ pub fn Fraction(comptime T: type) type {
             return (Self{ .num = num, .denum = denum }).reduce();
         }
 
+        /// Constructs a whole-number fraction `value/1`. Cannot fail.
         pub fn initInt(value: T) Self {
             return .{ .num = value, .denum = 1 };
         }
 
+        // Constructs a fraction without reducing it. Asserts a non-zero denominator.
         fn initUnchecked(num: T, denum: T) Self {
             debug.assert(denum != 0);
             return Self{ .num = num, .denum = denum };
         }
 
+        // Constructs and reduces a fraction, skipping the zero-denominator error path
+        // (asserts instead). Used internally when the denominator is known non-zero.
         fn initUncheckedReduce(num: T, denum: T) Self {
             debug.assert(denum != 0);
             return (Self{ .num = num, .denum = denum }).reduce();
         }
 
+        /// Returns this fraction in lowest terms with a positive denominator. Zero is
+        /// normalized to `0/1`.
         pub fn reduce(self: Self) Self {
             var frac = self;
             if (frac.denum < 0) {
@@ -69,6 +94,7 @@ pub fn Fraction(comptime T: type) type {
             return frac;
         }
 
+        /// In-place variant of `reduce`.
         pub fn reduceInPlace(self: *Self) void {
             if (self.denum < 0) {
                 self.num = -self.num;
@@ -85,18 +111,22 @@ pub fn Fraction(comptime T: type) type {
             self.denum = @divExact(self.denum, gT);
         }
 
+        // Addition with overflow detection, surfaced as `Error.Overflow`.
         fn addChecked(a: T, b: T) Error!T {
             const result = @addWithOverflow(a, b);
             if (result[1] != 0) return Error.Overflow;
             return result[0];
         }
 
+        // Multiplication with overflow detection, surfaced as `Error.Overflow`.
         fn mulChecked(a: T, b: T) Error!T {
             const result = @mulWithOverflow(a, b);
             if (result[1] != 0) return Error.Overflow;
             return result[0];
         }
 
+        /// Adds two fractions via cross-multiplication, returning the reduced sum.
+        /// Returns `Error.Overflow` if an intermediate product or sum overflows `T`.
         pub fn add(self: Self, other: Self) Error!Self {
             const num1 = try mulChecked(self.num, other.denum);
             const num2 = try mulChecked(other.num, self.denum);
@@ -105,6 +135,7 @@ pub fn Fraction(comptime T: type) type {
             return Self.initUncheckedReduce(num, denum);
         }
 
+        /// In-place variant of `add`.
         pub fn addInPlace(self: *Self, other: Self) Error!void {
             const num1 = try mulChecked(self.num, other.denum);
             const num2 = try mulChecked(other.num, self.denum);
@@ -115,50 +146,62 @@ pub fn Fraction(comptime T: type) type {
             self.reduceInPlace();
         }
 
+        /// Adds a whole integer to the fraction.
         pub fn addScalar(self: Self, value: T) Error!Self {
             const fracInt = Self.initInt(value);
             return try self.add(fracInt);
         }
 
+        /// In-place variant of `addScalar`.
         pub fn addScalarInPlace(self: *Self, value: T) Error!void {
             const fracInt = Self.initInt(value);
             try self.addInPlace(fracInt);
         }
 
+        /// Subtracts `other` from `self` (implemented as `self + (-other)`).
         pub fn sub(self: Self, other: Self) Error!Self {
             return add(self, try other.neg());
         }
 
+        /// In-place variant of `sub`.
         pub fn subInPlace(self: *Self, other: Self) Error!void {
             return addInPlace(self, try other.neg());
         }
 
+        /// Subtracts a whole integer from the fraction.
         pub fn subScalar(self: Self, value: T) Error!Self {
             const fracInt = Self.initInt(value);
             return try self.sub(fracInt);
         }
 
+        /// In-place variant of `subScalar`.
         pub fn subScalarInPlace(self: *Self, value: T) Error!void {
             const fracInt = Self.initInt(value);
             try self.subInPlace(fracInt);
         }
 
+        /// Negates the fraction. Returns `Error.Overflow` if the numerator is the
+        /// minimum representable value (which has no positive counterpart).
         pub fn neg(self: Self) Error!Self {
             if (self.num == math.minInt(T)) return Error.Overflow;
             return Self{ .num = -self.num, .denum = self.denum };
         }
 
+        /// In-place variant of `neg`.
         pub fn negInPlace(self: *Self) Error!void {
             if (self.num == math.minInt(T)) return Error.Overflow;
             self.num = -self.num;
         }
 
+        /// Returns the reciprocal `denum/num`, keeping the sign on the numerator.
+        /// Returns `ZeroDenominator` if the fraction is zero.
         pub fn inv(self: Self) Error!Self {
             if (self.num == 0) return Error.ZeroDenominator;
             if (self.num < 0) return Self.initUncheckedReduce(-self.denum, -self.num);
             return Self.initUncheckedReduce(self.denum, self.num);
         }
 
+        /// In-place variant of `inv`.
         pub fn invInPlace(self: *Self) Error!void {
             if (self.num == 0) return Error.ZeroDenominator;
             if (self.num < 0) {
@@ -171,81 +214,105 @@ pub fn Fraction(comptime T: type) type {
             self.reduceInPlace();
         }
 
+        /// Multiplies two fractions (numerator times numerator, denominator times
+        /// denominator), returning the reduced product. Returns `Error.Overflow`.
         pub fn mul(self: Self, other: Self) Error!Self {
             const num = try mulChecked(self.num, other.num);
             const denum = try mulChecked(self.denum, other.denum);
             return Self.initUncheckedReduce(num, denum);
         }
 
+        /// In-place variant of `mul`.
         pub fn mulInPlace(self: *Self, other: Self) Error!void {
             self.num = try mulChecked(self.num, other.num);
             self.denum = try mulChecked(self.denum, other.denum);
             self.reduceInPlace();
         }
 
+        /// Multiplies the fraction by a whole integer.
         pub fn mulScalar(self: Self, value: T) Error!Self {
             const fracInt = Self.initInt(value);
             return try self.mul(fracInt);
         }
 
+        /// In-place variant of `mulScalar`.
         pub fn mulScalarInPlace(self: *Self, value: T) Error!void {
             const fracInt = Self.initInt(value);
             try self.mulInPlace(fracInt);
         }
 
+        /// Divides `self` by `other` (implemented as `self * other⁻¹`). Returns
+        /// `ZeroDenominator` if `other` is zero.
         pub fn div(self: Self, other: Self) Error!Self {
             return try self.mul(try other.inv());
         }
 
+        /// In-place variant of `div`.
         pub fn divInPlace(self: *Self, other: Self) Error!void {
             try self.mulInPlace(try other.inv());
         }
 
+        /// Divides the fraction by a whole integer.
         pub fn divScalar(self: Self, value: T) Error!Self {
             const fracInt = Self.initInt(value);
             return try self.div(fracInt);
         }
 
+        /// In-place variant of `divScalar`.
         pub fn divScalarInPlace(self: *Self, value: T) Error!void {
             const fracInt = Self.initInt(value);
             return try self.divInPlace(fracInt);
         }
 
+        /// Returns true if the fraction represents a whole number (denominator 1
+        /// once reduced).
         pub fn isInt(self: Self) bool {
             return self.reduce().denum == 1;
         }
 
+        /// Returns the sign of the fraction as `-1`, `0`, or `1`, accounting for the
+        /// sign of both numerator and denominator.
         pub fn sign(self: Self) T {
             if (self.num == 0) return 0;
             if ((self.num > 0) == (self.denum > 0)) return 1;
             return -1;
         }
 
+        /// Returns true if the fraction equals the whole integer `value`.
         pub fn eqlScalar(self: Self, value: T) bool {
             return self.eql(Self.initInt(value));
         }
 
+        /// Returns true if two fractions are numerically equal. Compares sign and
+        /// absolute numerator/denominator, so it works regardless of how the sign is
+        /// distributed between numerator and denominator.
         pub fn eql(self: Self, other: Self) bool {
             return (self.sign() == other.sign()) and
                 (@abs(self.num) == @abs(other.num)) and
                 (@abs(self.denum) == @abs(other.denum));
         }
 
+        /// Returns the absolute value of the fraction.
         pub fn abs(self: Self) Self {
             return Self.initUncheckedReduce(self.num * math.sign(self.num), self.denum * math.sign(self.denum));
         }
 
+        /// In-place variant of `abs`.
         pub fn absInPlace(self: *Self) void {
             self.num *= math.sign(self.num);
             self.denum *= math.sign(self.denum);
         }
 
+        /// Converts the fraction to a float of the given type by dividing numerator
+        /// by denominator.
         pub fn toFloat(self: Self, comptime float_type: type) float_type {
             const num: float_type = @floatFromInt(self.num);
             const denum: float_type = @floatFromInt(self.denum);
             return num / denum;
         }
 
+        /// Converts the fraction to an integer of the given type. Returns
+        /// `ImpossibleConversionToInt` if the fraction is not a whole number.
         pub fn toInt(self: Self, comptime int_type: type) Error!int_type {
             if (self.isInt()) {
                 const res: int_type = @intCast(self.reduce().num);
@@ -255,6 +322,8 @@ pub fn Fraction(comptime T: type) type {
             }
         }
 
+        /// `std.fmt` formatting hook. Prints a whole number as just the integer
+        /// (e.g. `2`), and a proper fraction as `num/denum` (e.g. `3/2`).
         pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             const frac = self.reduce();
             if (self.isInt()) {
