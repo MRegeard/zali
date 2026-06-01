@@ -216,7 +216,9 @@ pub fn Fraction(comptime T: type) type {
         }
 
         pub fn sign(self: Self) T {
-            return math.sign(self.num) * math.sign(self.denum);
+            if (self.num == 0) return 0;
+            if ((self.num > 0) == (self.denum > 0)) return 1;
+            return -1;
         }
 
         pub fn eqlScalar(self: Self, value: T) bool {

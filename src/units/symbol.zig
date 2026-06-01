@@ -62,7 +62,7 @@ pub const SymbolTerm = struct {
         return result;
     }
 
-    pub fn format(self: Self, writer: *std.Io.Writer) std.io.Writer.Error!void {
+    pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.exponent.eqlScalar(1)) {
             try writer.print("{s}", .{self.symbol});
         } else {

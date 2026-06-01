@@ -460,9 +460,11 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     const zeroes: T = @splat(0);
                     const cmp = self.value <= zeroes;
                     if (@reduce(.Or, cmp)) cbrtPanic();
-                    var new_vec: T = undefined;
-                    for (0..@typeInfo(T).vector.len) |i| {
-                        new_vec[i] = math.cbrt(self.value[i]);
+                    const vector_type = @typeInfo(T).vector;
+                    var new_vec: [vector_type.len]vector_type.child = undefined;
+                    const val: [vector_type.len]vector_type.child = self.value;
+                    for (val, &new_vec) |v, *n| {
+                        n.* = math.cbrt(v);
                     }
                     return .init(new_vec);
                 },
@@ -667,12 +669,23 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        fn formatIterable(self: *const Self, writer: *std.Io.Writer, comptime str: []const u8, len: usize) std.Io.Writer.Error!void {
+        fn formatIterable(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             const scalar_type: type = getInnerTypeScalarType(T);
+            const container_type, const str = switch (inner_type) {
+                .array => .{ T, "Array: { " },
+                .slice => .{ T, "Slice: { " },
+                .vector => blk: {
+                    const vector_type = @typeInfo(T).vector;
+                    break :blk .{ [vector_type.len]vector_type.child, "Vector: { " };
+                },
+                else => unreachable,
+            };
+            const val: container_type = self.value;
+            const len = val.len;
             if (len <= 3) {
                 try writer.writeAll(str);
                 for (0..len) |i| {
-                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    try printQuantityFloat(writer, scalar_type, val[i]);
                     if (i != len - 1) try writer.writeByte(',');
                     try writer.writeByte(' ');
                 }
@@ -680,12 +693,12 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             } else {
                 try writer.writeAll(str);
                 for (0..2) |i| {
-                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    try printQuantityFloat(writer, scalar_type, val[i]);
                     try writer.writeAll(", ");
                 }
                 try writer.writeAll("... ");
                 for (len - 2..len) |i| {
-                    try printQuantityFloat(writer, scalar_type, self.value[i]);
+                    try printQuantityFloat(writer, scalar_type, val[i]);
                     if (i != len - 1) try writer.writeByte(',');
                     try writer.writeByte(' ');
                 }
@@ -699,17 +712,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                     try printQuantityFloat(writer, T, self.value);
                     try writer.print(" {f}", .{U.symbol});
                 },
-                .vector => {
-                    const len = @typeInfo(T).vector.len;
-                    try self.formatIterable(writer, "Vector: { ", len);
-                },
-                .array => {
-                    const len = self.value.len;
-                    try self.formatIterable(writer, "Array: { ", len);
-                },
-                .slice => {
-                    const len = self.value.len;
-                    try self.formatIterable(writer, "Slice: { ", len);
+                .vector, .array, .slice => {
+                    try self.formatIterable(writer);
                 },
             }
         }
@@ -1165,7 +1169,7 @@ test "toWithEquivalency" {
     const velocities: [3]f64 = .{ 0.0, 1000.0, -1000.0 };
     const freq_arr: Quantity([3]f64, us.km.div(si.s)) = .init(velocities);
     const as_freq = freq_arr.toWithEquivalency(us.GHz, .doppler_radio, .{rest_freq});
-    const expected_2: [3]f64 = .{ 1.420405751768, 1.4156677881739728, 1.4251437153620274};
+    const expected_2: [3]f64 = .{ 1.420405751768, 1.4156677881739728, 1.4251437153620274 };
     try zatest.expectApproxEqAbsIter(expected_2, as_freq.value, 1e-15);
 }
 
