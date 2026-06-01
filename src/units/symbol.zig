@@ -2,30 +2,37 @@ const std = @import("std");
 const testing = std.testing;
 const Fraction = @import("fraction.zig").Fraction;
 
+/// A single factor in a unit's symbol: a base symbol string raised to a rational
+/// exponent (e.g. `m`, `s-2`, `kg^1/2`). Several of these combine into a
+/// `SymbolExpression` to spell out a full unit.
 pub const SymbolTerm = struct {
     const Self = @This();
 
+    /// The base symbol text, e.g. "m", "kg", "Hz".
     symbol: []const u8,
+    /// The exponent applied to `symbol`, stored as an exact fraction.
     exponent: Fraction(isize),
 
+    /// Constructs a term with an explicit exponent.
     pub fn init(symbol: []const u8, exponent: Fraction(isize)) Self {
         return .{ .symbol = symbol, .exponent = exponent };
     }
 
+    /// Constructs a term with exponent 1 (the bare symbol).
     pub fn initSymbol(symbol: []const u8) Self {
         return .init(symbol, Fraction(isize).initInt(1));
     }
 
+    /// Constructs a term with an integer exponent.
     pub fn initSymbolInt(symbol: []const u8, value: isize) Self {
         return .init(symbol, Fraction(isize).initInt(value));
     }
 
-    // Case m1
-    // Case m-1 m+1
-    // Case m1/2
-    // Case m^1/2
-    // Case m-1/2 m+1/2
-    // Case m^-1/2 m^+1/2
+    // Parses the exponent portion of a symbol token into a Fraction. Handles the
+    // forms (with optional leading '^' and optional sign):
+    //   "1", "-1", "+1", "1/2", "^1/2", "-1/2", "^-1/2"
+    // The integer part before any '/' is the numerator; the part after is the
+    // denominator (default 1). The result is reduced before returning.
     fn parseExponent(string: []const u8) !Fraction(isize) {
         var result = Fraction(isize).initInt(1);
         var str_pos: usize = 0;
@@ -62,6 +69,8 @@ pub const SymbolTerm = struct {
         return result;
     }
 
+    /// `std.fmt` formatting hook. Prints just the symbol when the exponent is 1
+    /// (e.g. `m`), otherwise the symbol followed by the exponent (e.g. `s-1/2`).
     pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.exponent.eqlScalar(1)) {
             try writer.print("{s}", .{self.symbol});
@@ -71,15 +80,27 @@ pub const SymbolTerm = struct {
     }
 };
 
+/// A unit's full symbolic representation: a product of up to 8 `SymbolTerm`s
+/// (e.g. `kg m s-2` for newton). Backed by a fixed-size array rather than a heap
+/// allocation, so it can be built and compared entirely at comptime.
+///
+/// Operations mirror unit composition: `concatenate` multiplies two symbols (adding
+/// exponents of matching terms), `inv` negates all exponents, `mulFrac`/`divFrac`
+/// scale them for powers and roots. Terms with a resulting exponent of zero are
+/// dropped automatically.
 pub const SymbolExpression = struct {
     // TODO: Impose an ordering scheme at init such that what ever the input/operation by the user,
     // the symbols are always in the same state for a given unit. This matters for type check:
     // A * s should be equivalant to s * A and therefore compatible as a Unit type in Quantity.
     const Self = @This();
 
+    /// Number of populated terms.
     len: usize = 0,
+    /// The terms; only the first `len` entries are valid.
     terms: [8]SymbolTerm = undefined,
 
+    /// Builds an expression from a slice of terms (at most 8). Does not merge
+    /// duplicate symbols; use `checkDuplicates` afterward if the input may repeat.
     pub fn init(terms: []SymbolTerm) Self {
         if (terms.len > 8) @panic("More than 8 UniqueSymbol were given");
         var result: Self = .{};
@@ -90,6 +111,8 @@ pub const SymbolExpression = struct {
         return result;
     }
 
+    /// Builds a single-term expression from one symbol with exponent 1. An empty
+    /// string yields an empty expression (the symbol of `UNITLESS`).
     pub fn initUniqueSymbol(comptime symbol: []const u8) Self {
         var result = Self{};
         if (symbol.len == 0) return Self{};
@@ -98,6 +121,10 @@ pub const SymbolExpression = struct {
         return result;
     }
 
+    /// Parses a space-separated symbol string into an expression, e.g. "m s-1" or
+    /// "kg m s-2". Each token is split into a leading alphabetic symbol and a
+    /// trailing exponent (parsed by `SymbolTerm.parseExponent`). Duplicate symbols
+    /// are merged. An empty string yields an empty expression.
     pub fn initFromString(comptime string: []const u8) !Self {
         if (string.len == 0) {
             return Self{};
@@ -129,12 +156,15 @@ pub const SymbolExpression = struct {
         return result;
     }
 
+    /// Returns a copy with duplicate symbols merged (their exponents summed).
     pub fn checkDuplicates(self: Self) Self {
         var result = self;
         result.checkDuplicatesInPlace();
         return result;
     }
 
+    /// In-place variant of `checkDuplicates`: scans for repeated symbols, adds their
+    /// exponents into the first occurrence, and removes the rest.
     pub fn checkDuplicatesInPlace(self: *Self) void {
         var i: usize = 0;
         while (i < self.len) {
@@ -150,14 +180,18 @@ pub const SymbolExpression = struct {
         }
     }
 
+    /// Returns a copy with `symbol_term` merged in (multiplied into the expression).
     pub fn append(self: Self, symbol_term: SymbolTerm) Self {
         var result = self;
         result.appendInPlace(symbol_term);
         return result;
     }
 
+    /// In-place variant of `append`. If the symbol already exists, its exponent is
+    /// increased and the term is dropped if the result reaches zero; otherwise the
+    /// term is added. Empty-symbol terms (from multiplying by `UNITLESS`) are ignored.
+    /// Panics if the expression is already at capacity (8 terms).
     pub fn appendInPlace(self: *Self, symbol_term: SymbolTerm) void {
-        // This is here because multiplying by UNITLESS give symbol '""', but we want to ignore it.
         if (symbol_term.symbol.len == 0) {
             return;
         }
@@ -174,12 +208,14 @@ pub const SymbolExpression = struct {
         }
     }
 
+    /// Returns a copy with all zero-exponent terms removed.
     pub fn checkRemove(self: Self) Self {
         var result = self;
         result.checkRemoveInPlace();
         return result;
     }
 
+    /// In-place variant of `checkRemove`: drops every term whose exponent is zero.
     pub fn checkRemoveInPlace(self: *Self) void {
         var idx: usize = 0;
         while (idx < self.len) {
@@ -190,12 +226,15 @@ pub const SymbolExpression = struct {
         }
     }
 
+    /// Returns a copy with the term at `pos` removed.
     pub fn removePos(self: Self, pos: usize) Self {
         var result = self;
         result.removePosInPlace(pos);
         return result;
     }
 
+    // In-place variant of `removePos`. Removes by swapping in the last term (order
+    /// is not preserved). Panics on an empty expression or out-of-range `pos`.
     pub fn removePosInPlace(self: *Self, pos: usize) void {
         if (self.len == 0) @panic("Trying to remove from uninitialize memory cause panic!");
         if (pos >= self.len) @panic("Accessing undefined memory cause panic!");
@@ -203,6 +242,8 @@ pub const SymbolExpression = struct {
         self.len -= 1;
     }
 
+    /// Returns the index of the term matching `symbol_term`'s symbol (ignoring its
+    /// exponent), or null if not present.
     pub fn indexOfSymbol(self: Self, symbol_term: SymbolTerm) ?usize {
         for (0..self.len) |i| {
             if (std.mem.eql(u8, self.terms[i].symbol, symbol_term.symbol)) {
@@ -212,6 +253,8 @@ pub const SymbolExpression = struct {
         return null;
     }
 
+    /// `std.fmt` formatting hook. Joins the terms with spaces, e.g. `m s-2 kg`.
+    /// An empty expression prints nothing.
     pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.len == 0) {
             try writer.print("", .{});
@@ -223,6 +266,9 @@ pub const SymbolExpression = struct {
         try writer.print("{f}", .{self.terms[self.len - 1]});
     }
 
+    /// Returns true if two expressions denote the same symbolic unit, regardless of
+    /// term order. Works by concatenating `self` with the inverse of `other`: if
+    /// everything cancels to an empty expression, they were equal.
     pub fn eql(self: Self, other: Self) bool {
         if (self.len == 0 and other.len == 0) return true;
         if (self.len != other.len) return false;
@@ -232,48 +278,59 @@ pub const SymbolExpression = struct {
         return false;
     }
 
+    /// Returns a copy with `other`'s terms merged in (symbolic multiplication).
     pub fn concatenate(self: Self, other: Self) Self {
         var result = self;
         result.concatenateInPlace(other);
         return result;
     }
 
+    /// In-place variant of `concatenate`: appends each term of `other`, merging
+    /// exponents of matching symbols.
     pub fn concatenateInPlace(self: *Self, other: Self) void {
         for (0..other.len) |i| {
             self.appendInPlace(other.terms[i]);
         }
     }
 
+    /// Returns the symbolic inverse (every exponent negated), e.g. `m s-1` -> `m-1 s`.
     pub fn inv(self: Self) Self {
         var result = self;
         result.invInPlace();
         return result;
     }
 
+    /// In-place variant of `inv`.
     pub fn invInPlace(self: *Self) void {
         for (0..self.len) |i| {
             self.terms[i].exponent.negInPlace() catch unreachable;
         }
     }
 
+    /// In-place: multiplies every term's exponent by `frac` (used when raising the
+    /// unit to a rational power).
     pub fn mulFracInPlace(self: *Self, frac: Fraction(isize)) void {
         for (0..self.len) |i| {
             self.terms[i].exponent.mulInPlace(frac) catch unreachable;
         }
     }
 
+    /// Returns a copy with every exponent multiplied by `frac`.
     pub fn mulFrac(self: Self, frac: Fraction(isize)) Self {
         var result = self;
         result.mulFracInPlace(frac);
         return result;
     }
 
+    /// In-place: divides every term's exponent by `frac` (used when taking a
+    /// rational root of the unit).
     pub fn divFracInPlace(self: *Self, frac: Fraction(isize)) void {
         for (0..self.len) |i| {
             self.terms[i].exponent.divInPlace(frac) catch unreachable;
         }
     }
 
+    /// Returns a copy with every exponent divided by `frac`.
     pub fn divFrac(self: Self, frac: Fraction(isize)) Self {
         var result = self;
         result.divFracInPlace(frac);
