@@ -13,7 +13,29 @@ const Equivalency = equivalency_mod.Equivalency;
 const utils = @import("utils.zig");
 const us = @import("units_storage.zig");
 
+/// A physical quantity: a value paired with a unit that is known at compile time.
+///
+/// `Quantity` is generic over two parameters:
+/// - `T`: the storage type of the underlying value. Supported types are a float
+///   scalar (`f32`/`f64`/...), a `@Vector` of floats, an array of floats,
+///   or a slice of floats. Integer storage is intentionally not supported.
+/// - `U`: the `Unit` of the quantity, a comptime value carrying the dimensional
+///   analysis, scale factor, optional affine offset, and symbol.
+///
+/// Because `U` is a comptime parameter, all unit logic (dimension checking, scale
+/// computation, equivalency routing) resolves at compile time. Only the arithmetic
+/// on the stored value happens at runtime, making this effectively a zero-cost
+/// abstraction over raw float operations.
+///
+/// Operations families follow a naming convention:
+/// - `<op>`        returns a new `Quantity` (chainable; not available for slices,
+///               which have no owned storage to return).
+/// - `<op>InPlace` mutates `self` in place and returns `void`.
+/// - `<op>Into`    writes the result into a caller-provided `out` buffer; this is the
+///               required form for slice-backed quantities.
 pub fn Quantity(comptime T: type, comptime U: Unit) type {
+    // Classifies the storage type `T` into one of four shapes. Each method
+    // switches on this to select the right element-wise strategy.
     const InnerType = enum {
         scalar,
         vector,
@@ -22,9 +44,15 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
     };
     return struct {
         const Self = @This();
+        /// Marker declaration used by `utils.isQuantity` / `assertIsQuantity` to
+        /// recognize a `Quantity` type via `@hasDecl` without inspecting fields.
         pub const is_zali_quantity: bool = true;
+        /// The compile-time unit of this quantity.
         pub const unit: Unit = U;
+        /// The storage type of the underlying value (e.g. `f64`, `[]f32`).
         pub const value_type: type = T;
+        // Resolved storage shape for `T`. Rejects any non-float element type at
+        // compile time so the rest of the struct can assume floating point math.
         const inner_type: InnerType = switch (@typeInfo(T)) {
             .float => .scalar,
             .vector => |vector| blk: {
@@ -51,8 +79,11 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             else => @compileError("Unsupported type for Quantity value type T, got " ++ @typeName(T) ++ " ."),
         };
 
+        /// The stored value, in units of `U`.
         value: T,
 
+        // Returns the scalar element type underlying `Ty`: `Ty` itself for a float
+        // scalar, or the child type for a vector, array, or slice.
         fn getInnerTypeScalarType(comptime Ty: type) type {
             switch (@typeInfo(Ty)) {
                 .float => return Ty,
@@ -66,10 +97,14 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Wraps an already-constructed value of type `T` in a `Quantity`.
         pub fn init(value: T) Self {
             return .{ .value = value };
         }
 
+        /// Constructs a quantity from a single scalar, broadcasting it across all
+        /// elements for vector and array storage. Not valid for slices, which need
+        /// caller-owned backing memory (use `initScalarValueWithBuf`).
         pub fn initScalarValue(value: getInnerTypeScalarType(T)) Self {
             var return_val: T = undefined;
             switch (inner_type) {
@@ -83,6 +118,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             return Self{ .value = return_val };
         }
 
+        /// Slice-only variant of `initScalarValue`: fills the caller-provided `buf`
+        /// with `value` and stores it. The quantity borrows `buf`; the caller owns
+        /// its lifetime.
         pub fn initScalarValueWithBuf(value: getInnerTypeScalarType(T), buf: T) Self {
             switch (inner_type) {
                 .slice => {
@@ -95,10 +133,13 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Returns the unit `U` of this quantity as a runtime value.
         pub fn getUnit(self: *const Self) Unit {
             return @TypeOf(self.*).unit;
         }
 
+        /// Adds two quantities of the same unit, returning a new quantity.
+        /// Slices have no owned storage to return, so use `addInPlace` or `addInto`.
         pub fn add(self: *const Self, other: Self) Self {
             switch (inner_type) {
                 .scalar, .vector => {
@@ -117,6 +158,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Adds `other` into `self`, mutating it in place. Works for all storage
+        /// shapes including slices.
         pub fn addInPlace(self: *Self, other: Self) void {
             switch (inner_type) {
                 .scalar, .vector => {
@@ -135,6 +178,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Adds `self` and `other`, writing the result into `out`. This is the
+        /// required form for slices, which cannot return owned storage from `add`.
         pub fn addInto(self: *const Self, other: Self, out: *Self) void {
             switch (inner_type) {
                 .slice => {
@@ -148,21 +193,25 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Adds a raw value of type `T` (same unit assumed), returning a new quantity.
         pub fn addValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, U) = .init(val);
             return self.add(quantity_val);
         }
 
+        /// In-place variant of `addValue`.
         pub fn addValueInPlace(self: *Self, val: T) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.addInPlace(quantity_val);
         }
-
+        /// Buffer-output variant of `addValue`.
         pub fn addValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.addInto(quantity_val, out);
         }
 
+        /// Subtracts two quantities of the same unit, returning a new quantity.
+        /// Slices have no owned storage to return, so use `subInPlace` or `subInto`.
         pub fn sub(self: *const Self, other: Self) Self {
             switch (inner_type) {
                 .scalar, .vector => {
@@ -181,6 +230,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Subtracts `other` from `self`, mutating it in place. Works for all
+        /// storage shapes including slices.
         pub fn subInPlace(self: *Self, other: Self) void {
             switch (inner_type) {
                 .scalar, .vector => self.value -= other.value,
@@ -197,6 +248,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Subtracts `other` from `self`, writing the result into `out`. Required
+        /// form for slices.
         pub fn subInto(self: *const Self, other: Self, out: *Self) void {
             switch (inner_type) {
                 .slice => {
@@ -210,21 +263,27 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Subtracts a raw value of type `T` (same unit assumed), returning a new quantity.
         pub fn subValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, U) = .init(val);
             return self.sub(quantity_val);
         }
 
+        /// In-place variant of `subValue`.
         pub fn subValueInPlace(self: *Self, val: T) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.subInPlace(quantity_val);
         }
 
+        /// Buffer-output variant of `subValue`.
         pub fn subValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.subInto(quantity_val, out);
         }
 
+        /// Multiplies two quantities, producing a quantity whose unit is the product
+        /// `U * other.unit`. `other` may carry any unit but must have the same value
+        /// storage type `T`. Slices use `mulInto`.
         pub fn mul(self: *const Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
@@ -247,6 +306,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Multiplies `self` by `other`, writing the result into `out` whose unit is
+        /// `U * other.unit`. Required form for slices.
         pub fn mulInto(self: *const Self, other: anytype, out: *Quantity(T, U.mul(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
@@ -268,11 +329,14 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Multiplies by a dimensionless value of type `T`, leaving the unit
+        /// unchanged, and returns a new quantity.
         pub fn mulValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             return self.mul(quantity_val);
         }
 
+        /// In-place variant of `mulValue`.
         pub fn mulValueInPlace(self: *Self, val: T) void {
             switch (inner_type) {
                 .scalar, .vector => self.value *= val,
@@ -289,11 +353,15 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Buffer-output variant of `mulValue`.
         pub fn mulValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             self.mulInto(quantity_val, out);
         }
 
+        /// Divides two quantities, producing a quantity whose unit is the quotient
+        /// `U / other.unit`. `other` may carry any unit but must have the same value
+        /// storage type `T`. Slices use `divInto`.
         pub fn div(self: *const Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
@@ -316,6 +384,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Divides `self` by `other`, writing the result into `out` whose unit is
+        /// `U / other.unit`. Required form for slices.
         pub fn divInto(self: *const Self, other: anytype, out: *Quantity(T, U.div(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
@@ -337,14 +407,17 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Divides by a dimensionless value of type `T`, leaving the unit
+        /// unchanged, and returns a new quantity.
         pub fn divValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             return self.div(quantity_val);
         }
 
+        /// In-place variant of `divValue`.
         pub fn divValueInPlace(self: *Self, val: T) void {
             switch (inner_type) {
-                .scalar, .vector => self.value / val,
+                .scalar, .vector => self.value /= val,
                 .array, .slice => {
                     for (self.value, val) |*s, v| {
                         s.* /= v;
@@ -353,11 +426,15 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Buffer-output variant of `divValue`.
         pub fn divValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             self.divInto(quantity_val, out);
         }
 
+        /// Raises the quantity to a comptime integer power, scaling the unit by the
+        /// same exponent (e.g. `m` raised to 2 becomes `m^2`). Negative powers invert.
+        /// Slices use `powInto`.
         pub fn pow(self: *const Self, comptime value: isize) Quantity(T, U.pow(value)) {
             switch (inner_type) {
                 .scalar => return .init(math.pow(T, self.value, value)),
@@ -385,6 +462,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
+        /// Buffer-output variant of `pow`, writing into `out` whose unit is `U^value`.
+        /// Required form for slices.
         pub fn powInto(self: *const Self, comptime value: isize, out: *Quantity(T, U.pow(value))) void {
             switch (inner_type) {
                 .slice => {
@@ -398,7 +477,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
                 },
             }
         }
-
+        // Panics if `value` is non-positive; sqrt is only defined for positive reals here.
         fn checkSqrtPanic(value: anytype) bool {
             if (value <= 0) sqrtPanic();
             return true;
@@ -408,6 +487,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             @panic("Square root of zero encounter");
         }
 
+        /// Takes the square root, halving the unit's exponents (e.g. `m^2` becomes `m`).
+        /// Panics if any element is non-positive. Slices use `sqrtInto`.
         pub fn sqrt(self: *const Self) Quantity(T, U.sqrt()) {
             switch (inner_type) {
                 .scalar => {
@@ -431,6 +512,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
+        /// Buffer-output variant of `sqrt`, writing into `out` whose unit is `sqrt(U)`.
+        /// Required form for slices.
         pub fn sqrtInto(self: *const Self, out: *Quantity(T, U.sqrt())) void {
             switch (inner_type) {
                 .slice => {
@@ -442,6 +525,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        // Panics if `value` is non-positive; this implementation restricts cbrt to
+        // positive reals.
         fn checkCbrtPanic(value: anytype) bool {
             if (value <= 0) cbrtPanic();
             return true;
@@ -451,6 +536,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             @panic("Cube root of zero encounter");
         }
 
+        /// Takes the cube root, dividing the unit's exponents by three (e.g. `m^3`
+        /// becomes `m`). Panics if any element is non-positive. Slices use `cbrtInto`.
         pub fn cbrt(self: *const Self) Quantity(T, U.cbrt()) {
             switch (inner_type) {
                 .scalar => {
@@ -482,6 +569,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
+        /// Buffer-output variant of `cbrt`, writing into `out` whose unit is `cbrt(U)`.
+        /// Required form for slices.
         pub fn cbrtInto(self: *const Self, out: *Quantity(T, U.cbrt())) void {
             switch (inner_type) {
                 .slice => {
@@ -493,6 +582,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Sets every element to `value`, broadcasting the scalar across vector,
+        /// array, and slice storage.
         pub fn setScalarValue(self: *Self, value: getInnerTypeScalarType(T)) void {
             switch (inner_type) {
                 .scalar => self.value = value,
@@ -502,6 +593,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Reduces a multi-element quantity to a single scalar quantity of the same
+        /// unit, using the given operation. Supports `Add`, `Mul`, `Min`, `Max`.
+        /// A scalar quantity reduces to itself.
         pub fn reduce(self: *const Self, comptime op: std.builtin.ReduceOp) Quantity(getInnerTypeScalarType(T), U) {
             switch (inner_type) {
                 .scalar => return self.*,
@@ -545,6 +639,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Dot product with `other`: element-wise multiply then sum, returning a
+        /// scalar quantity whose unit is `U * other.unit`. For scalar storage this is
+        /// just multiplication.
         pub fn dot(self: *const Self, other: anytype) Quantity(getInnerTypeScalarType(T), U.mul(@TypeOf(other).unit)) {
             switch (inner_type) {
                 .scalar => return self.mul(other),
@@ -559,6 +656,10 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Converts to another unit of the same dimension. The conversion is affine:
+        /// `out = value * (U.scale / target.scale) + (U.offset - target.offset) / target.scale`,
+        /// which correctly handles offset units like Celsius and Fahrenheit. A
+        /// dimension mismatch is a compile error. Slices use `toInto`.
         pub fn to(self: *const Self, comptime unit_type: Unit) Quantity(T, unit_type) {
             if (comptime !U.dim.eql(unit_type.dim)) {
                 @compileError("Units are not compatible.");
@@ -610,10 +711,17 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Converts to a target unit using a named physical equivalency (e.g.
+        /// `.spectral`, `.mass_energy`, `.doppler_radio`) that allows conversions
+        /// across different dimensions. `equivalency` is comptime-known so only the
+        /// selected conversion is compiled. `args` carries any extra parameters the
+        /// equivalency needs (an empty tuple `.{}` for those that take none).
         pub fn toWithEquivalency(self: *const Self, comptime unit_type: Unit, comptime equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
             return equivalency.convert(T, U, self, unit_type, args);
         }
 
+        /// Buffer-output variant of `to`, writing the converted value into `out`.
+        /// Required form for slices.
         pub fn toInto(self: *const Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) void {
             if (comptime !U.dim.eql(unit_type.dim)) {
                 @compileError("Units are not compatible.");
@@ -641,6 +749,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        // Decomposes the unit into base units of the given `system` (e.g. expanding
+        /// `N` into `kg·m·s⁻²`), scaling the value by `U.scale` so the physical
+        /// magnitude is preserved. Slices use `decomposeInto`.
         pub fn decompose(self: *const Self, comptime system: System) Quantity(T, U.decompose(system)) {
             switch (inner_type) {
                 .scalar, .vector => return .init(self.value * U.scale),
@@ -655,12 +766,16 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// Buffer-output variant of `decompose`, writing into `out`. Required form
+        /// for slices.
         pub fn decomposeInto(self: *const Self, comptime system: System, out: *Quantity(T, U.decompose(system))) void {
             for (self.value, out.value) |s, *buf| {
                 buf.* = s * U.scale;
             }
         }
 
+        // Prints a single float, switching to scientific notation for very large or
+        // very small magnitudes and using decimal notation otherwise.
         fn printQuantityFloat(writer: *std.Io.Writer, comptime Ty: type, value: Ty) std.Io.Writer.Error!void {
             if (@abs(value) > 100000 or @abs(value) < 1e-3) {
                 try writer.print("{e}", .{value});
@@ -669,6 +784,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        // Formats vector/array/slice storage. Collections of more than three
+        // elements are abbreviated as `{ a, b, ... y, z }` to keep output compact.
         fn formatIterable(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             const scalar_type: type = getInnerTypeScalarType(T);
             const container_type, const str = switch (inner_type) {
@@ -706,6 +823,8 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
+        /// `std.fmt` formatting hook. Prints the value followed by the unit symbol,
+        /// e.g. `2e6 s` for a scalar or `Vector: { 440, 880, 1760 } Hz` for a vector.
         pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             switch (inner_type) {
                 .scalar => {
