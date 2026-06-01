@@ -7,6 +7,10 @@ const fraction = @import("fraction.zig");
 const Fraction = fraction.Fraction;
 const FractionError = fraction.FractionError;
 
+// The eight base dimensions, each a `Dim` with a single exponent of 1. These are
+// the building blocks from which all unit dimensions are composed. The first seven
+// are the SI base dimensions; `angle` is included separately to support angular
+// equivalencies even though angle is formally dimensionless in SI.
 pub const length: Dim = .initUniqueFieldInt("l", 1);
 pub const mass: Dim = .initUniqueFieldInt("m", 1);
 pub const time: Dim = .initUniqueFieldInt("t", 1);
@@ -16,6 +20,25 @@ pub const amount: Dim = .initUniqueFieldInt("n", 1);
 pub const luminousIntensity: Dim = .initUniqueFieldInt("j", 1);
 pub const angle: Dim = .initUniqueFieldInt("a", 1);
 
+/// The dimensional signature of a unit: the exponent of each base dimension,
+/// stored as a `Fraction` so that fractional powers (e.g. from square roots) are
+/// represented exactly. Two units are dimensionally compatible iff their `Dim`s
+/// are equal.
+///
+/// Fields, each a `Fraction(isize)` exponent:
+/// - `l`:  length
+/// - `m`:  mass
+/// - `t`:  time
+/// - `i`:  electric current
+/// - `th`: thermodynamic temperature
+/// - `n`: amount of substance
+/// - `j`:  luminous intensity
+/// - `a`:  angle (dimensionless in SI, tracked here for angular equivalencies)
+///
+/// Arithmetic on dimensions mirrors arithmetic on units: multiplying two units adds
+/// their dimensions, dividing subtracts them, raising to a power scales them. Each
+/// operation returns `FractionError` if the underlying fraction arithmetic fails,
+/// and comes in both a pure and an `InPlace` form.
 pub const Dim = struct {
     const Self = @This();
 
@@ -28,6 +51,7 @@ pub const Dim = struct {
     j: Fraction(isize),
     a: Fraction(isize),
 
+    /// Constructs a dimensionless signature: every base-dimension exponent is zero.
     pub fn initDimensionless() Self {
         return .{
             .l = Fraction(isize).initInt(0),
@@ -41,16 +65,21 @@ pub const Dim = struct {
         };
     }
 
+    /// Constructs a signature with a single base dimension (named by `field_name`,
+    /// e.g. "l" or "th") set to `frac` and all others zero.
     pub fn initUniqueField(comptime field_name: []const u8, frac: Fraction(isize)) Self {
         var res = Self.initDimensionless();
         @field(res, field_name) = frac;
         return res;
     }
 
+    /// Integer-exponent convenience wrapper around `initUniqueField`.
     pub fn initUniqueFieldInt(comptime field_name: []const u8, value: isize) Self {
         return Self.initUniqueField(field_name, Fraction(isize).initInt(value));
     }
 
+    /// Returns true if every base-dimension exponent matches, i.e. the two
+    /// signatures are dimensionally identical.
     pub fn eql(self: Self, other: Self) bool {
         return (self.l.eql(other.l)) and
             (self.m.eql(other.m)) and
@@ -62,6 +91,8 @@ pub const Dim = struct {
             (self.a.eql(other.a));
     }
 
+    /// Adds two signatures component-wise (the dimension of a unit product).
+    /// Returns `FractionError` if any exponent addition overflows.
     pub fn add(self: Self, other: Self) FractionError!Self {
         var res = Self.initDimensionless();
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -71,6 +102,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `add`.
     pub fn addInPlace(self: *Self, other: Self) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -78,6 +110,8 @@ pub const Dim = struct {
         }
     }
 
+    /// Subtracts two signatures component-wise (the dimension of a unit quotient).
+    /// Returns `FractionError` if any exponent subtraction overflows.
     pub fn sub(self: Self, other: Self) FractionError!Self {
         var res = Self.initDimensionless();
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -87,6 +121,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `sub`.
     pub fn subInPlace(self: *Self, other: Self) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -94,6 +129,8 @@ pub const Dim = struct {
         }
     }
 
+    /// Negates every exponent (the dimension of a reciprocal unit). Returns
+    /// `FractionError` on fraction failure.
     pub fn neg(self: Self) FractionError!Self {
         var res = self;
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -103,6 +140,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `neg`.
     pub fn negInPlace(self: *Self) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -110,6 +148,8 @@ pub const Dim = struct {
         }
     }
 
+    /// Multiplies every exponent by an integer (the dimension of a unit raised to
+    /// an integer power). Returns `FractionError` on overflow.
     pub fn mulScalar(self: Self, value: isize) FractionError!Self {
         var res = self;
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -119,6 +159,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `mulScalar`.
     pub fn mulScalarInPlace(self: *Self, value: isize) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -126,6 +167,8 @@ pub const Dim = struct {
         }
     }
 
+    /// Multiplies every exponent by a fraction (the dimension of a unit raised to a
+    /// rational power). Returns `FractionError` on overflow.
     pub fn mulFraction(self: Self, frac: Fraction(isize)) FractionError!Self {
         var res = self;
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -135,6 +178,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `mulFraction`.
     pub fn mulFractionInPlace(self: *Self, frac: Fraction(isize)) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -142,6 +186,8 @@ pub const Dim = struct {
         }
     }
 
+    /// Divides every exponent by an integer (the dimension of an integer root, e.g.
+    /// dividing by 2 for a square root). Returns `FractionError` on failure.
     pub fn divScalar(self: Self, value: isize) FractionError!Self {
         var res = self;
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -151,6 +197,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `divScalar`.
     pub fn divScalarInPlace(self: *Self, value: isize) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -158,6 +205,7 @@ pub const Dim = struct {
         }
     }
 
+    /// Divides every exponent by a fraction. Returns `FractionError` on failure.
     pub fn divFraction(self: Self, frac: Fraction(isize)) FractionError!Self {
         var res = self;
         inline for (@typeInfo(Self).@"struct".fields) |field| {
@@ -167,6 +215,7 @@ pub const Dim = struct {
         return res;
     }
 
+    /// In-place variant of `divFraction`.
     pub fn divFractionInPlace(self: *Self, frac: Fraction(isize)) FractionError!void {
         inline for (@typeInfo(Self).@"struct".fields) |field| {
             const name = field.name;
@@ -174,6 +223,8 @@ pub const Dim = struct {
         }
     }
 
+    /// `std.fmt` formatting hook. Prints all eight exponents in a fixed order, e.g.
+    /// `Dim: {l = 1, m = 0, t = 1, i = 0, th = 0, n = 0, j = 0, a = 0}`.
     pub fn format(self: *const Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll("Dim: {");
         inline for (@typeInfo(Self).@"struct".fields, 0..8) |field, i| {
