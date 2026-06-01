@@ -15,6 +15,30 @@ const cst = @import("../constants.zig");
 const imperial = @import("imperial.zig");
 const us = @import("units_storage.zig");
 
+//! Physical equivalencies: conversions between units of *different* dimensions that
+//! are related by a physical law or convention (frequency <-> wavelength, mass <->
+//! energy, redshift <-> velocity, and so on). Ordinary same-dimension conversions
+//! are handled by `Quantity.to`; these are the cross-dimension cases that astropy
+//! exposes through its `equivalencies` mechanism.
+//!
+//! Each equivalency is a namespaced struct exposing a `convert` function. Most use a
+//! hub-and-spoke design: the input is first converted to a single canonical unit
+//! (the "hub"), then from the hub to the requested output. This keeps the number of
+//! branches linear in the number of supported units rather than quadratic. The
+//! `Equivalency` enum at the bottom ties them together for use from
+//! `Quantity.toWithEquivalency`.
+//!
+//! Equivalencies that need extra information (a rest frequency, a beam area, a
+//! zero-point flux, ...) take a comptime-checked `args` tuple; those that don't
+//! ignore it. Argument validation lives in each struct's `checkArgs`, which emits a
+//! `@compileError` on misuse.
+
+/// Spectral equivalency: converts between the various ways of locating a point in a
+/// spectrum -- frequency, wavelength, energy, spectroscopic wavenumber (m-1), and
+/// angular wavenumber (rad/m). Hub unit is Hz.
+///
+/// Relations (with c the speed of light, h the Planck constant):
+///   nu = c / lambda,  E = h nu,  nu = c * wavenumber_spec,  nu = c * k / (2 pi)
 pub const spectral_equivalency = struct {
     const Hz: Unit = si.Hz;
     const dim_freq: Dim = Hz.dim;
@@ -55,6 +79,8 @@ pub const spectral_equivalency = struct {
     }
 };
 
+/// Mass-energy equivalency: converts between mass and energy via E = m c^2.
+/// Hub unit is the joule.
 // TODO: Support generalise equivalency as Astropy does such as kg m-2 <-> J m-2 (??).
 pub const mass_energy_equivalency = struct {
     const J: Unit = si.J;
@@ -83,6 +109,10 @@ pub const mass_energy_equivalency = struct {
     }
 };
 
+/// Temperature-energy equivalency: converts between thermal energy and temperature
+/// via E = k_B T, where k_B is the Boltzmann constant. Hub unit is the joule.
+/// Temperature inputs are first normalized to kelvin so offset scales (e.g. Celsius)
+/// are handled correctly before the physics is applied.
 pub const temperature_energy_equivalency = struct {
     const J: Unit = si.J;
     const dim_energy: Dim = si.J.dim;
@@ -113,12 +143,18 @@ pub const temperature_energy_equivalency = struct {
 // In astropy, this equivalency is required because offset-based units (°C, °F)
 // are not handled by regular .to(). In this implementation, offset handling is
 // built into the unit system, so this equivalency simply delegates to .to().
+/// Temperature equivalency: provided for API parity with astropy, where it is needed
+/// because offset scales (Celsius, Fahrenheit) are otherwise incompatible. Here unit
+/// offsets are built into `Quantity.to`, so this simply delegates to it.
 pub const temperature_equivalency = struct {
     pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         return input_quantity.to(U_out);
     }
 };
 
+/// Molar-mass / atomic-mass-unit equivalency: converts between a molar mass (g/mol)
+/// and an atomic mass (u), related by Avogadro's number N_A (1 u corresponds to
+/// 1 g/mol). Hub unit is the atomic mass unit.
 pub const molar_mass_amu_equivalency = struct {
     const molar_mass: Unit = si.g.div(si.mol);
     const molar_mass_dim: Dim = molar_mass.dim;
@@ -147,6 +183,10 @@ pub const molar_mass_amu_equivalency = struct {
     }
 };
 
+/// Doppler-redshift equivalency: converts between dimensionless redshift z and radial
+/// velocity using the relativistic relation. Hub unit is km/s.
+///   z -> v:  v = c * ((z+1)^2 - 1) / ((z+1)^2 + 1)
+///   v -> z:  z = sqrt((1 + beta)/(1 - beta)) - 1,  with beta = v/c
 pub const doppler_redshift_equivalency = struct {
     const rv_unit: Unit = us.km.div(si.s);
     const rv_dim: Dim = rv_unit.dim;
@@ -181,6 +221,10 @@ pub const doppler_redshift_equivalency = struct {
     }
 };
 
+/// Dimensionless-angles equivalency: lets angular quantities (radians, degrees, ...)
+/// be treated as dimensionless and vice versa, normalizing through radians. Useful
+/// because angle is dimensionless in SI but tracked as a dimension here. Hub is the
+/// dimensionless value (with the angle stripped to / restored from radians).
 pub const dimensionless_angles_equivalency = struct {
     pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_unitless: Quantity(T, UNITLESS) = toUnitless(T, U_in, input_quantity);
@@ -220,6 +264,8 @@ pub const dimensionless_angles_equivalency = struct {
 
 // NOTE: At the moment, contrary to Astropy, this conversion gives negative angles and negative
 // distances, instead of NaN.
+/// Parallax equivalency: converts between a parallax angle and a distance via the
+/// reciprocal relation p[arcsec] = 1 / d[pc]. Hub unit is the arcsecond.
 pub const parallax_equivalency = struct {
     const as: Unit = si.arcsec;
     const as_dim: Dim = as.dim;
@@ -248,6 +294,11 @@ pub const parallax_equivalency = struct {
     }
 };
 
+/// Zero-point-flux equivalency: converts between a linear flux and a "maggy" (a
+/// dimensionless flux ratio relative to a reference), via f = F / F0. Requires one
+/// argument: the zero-point flux F0 (e.g. 3631 Jy for the AB system). Only two units
+/// are involved (flux and dimensionless maggy), so this is a direct conversion rather
+/// than hub-and-spoke.
 pub const zero_point_flux_equivalency = struct {
     fn checkArgs(args: anytype) void {
         const ArgsType = @TypeOf(args);
@@ -285,6 +336,13 @@ pub const zero_point_flux_equivalency = struct {
     }
 };
 
+/// Relativistic Doppler equivalency: converts a spectral coordinate (frequency,
+/// wavelength, energy, wavenumber) to/from radial velocity using the exact
+/// relativistic formula, given a rest spectral location. Requires one argument: the
+/// rest value as any spectral-compatible Quantity (normalized to Hz internally).
+/// Hub unit is km/s; spectral inputs/outputs route through `spectral_equivalency`.
+///   f -> v:  v = c * (f0^2 - f^2) / (f0^2 + f^2)
+///   v -> f:  f = f0 * sqrt(1 - beta^2) / (1 + beta),  beta = v/c
 pub const doppler_relativistic_equivalency = struct {
     const wavelength_dim: Dim = si.m.dim;
     const energy_dim: Dim = si.J.dim;
@@ -370,6 +428,11 @@ pub const doppler_relativistic_equivalency = struct {
     }
 };
 
+/// Optical Doppler equivalency: converts a spectral coordinate to/from radial
+/// velocity using the optical convention (linear in wavelength). Requires the rest
+/// value as a spectral-compatible Quantity. Hub unit is km/s.
+///   f -> v:  v = c * (f0 - f) / f
+///   v -> f:  f = f0 / (1 + v/c)
 pub const doppler_optical_equivalency = struct {
     const wavelength_dim: Dim = si.m.dim;
     const energy_dim: Dim = si.J.dim;
@@ -455,6 +518,11 @@ pub const doppler_optical_equivalency = struct {
     }
 };
 
+/// Radio Doppler equivalency: converts a spectral coordinate to/from radial velocity
+/// using the radio convention (linear in frequency). Requires the rest value as a
+/// spectral-compatible Quantity. Hub unit is km/s.
+///   f -> v:  v = c * (f0 - f) / f0
+///   v -> f:  f = f0 * (1 - v/c)
 pub const doppler_radio_equivalency = struct {
     const wavelength_dim: Dim = si.m.dim;
     const energy_dim: Dim = si.J.dim;
@@ -540,6 +608,10 @@ pub const doppler_radio_equivalency = struct {
     }
 };
 
+/// Magnetic flux-field equivalency: converts between the H-field (A/m) and the
+/// B-field (tesla) via B = mu_0 mu_r H. Takes an optional argument: the relative
+/// permeability mu_r as a dimensionless Quantity (defaults to 1, i.e. vacuum).
+/// Hub unit is the tesla.
 pub const magnetic_flux_field_equivalency = struct {
     const H_field_dim: Dim = si.A.div(si.m).dim;
     const B_field_dim: Dim = si.T.dim;
@@ -587,8 +659,14 @@ pub const magnetic_flux_field_equivalency = struct {
     }
 };
 
-//// NOTE: In astropy, this conversion also support Jy/beam unit. In Zali at the moment we do not
-//// support beam unit which is a dimensionless unit that seems misleading to me.
+// NOTE: In astropy, this conversion also support Jy/beam unit. In Zali at the moment we do not
+// support beam unit which is a dimensionless unit that seems misleading to me.
+/// Brightness-temperature equivalency: converts between specific intensity / flux
+/// density and brightness temperature using the Rayleigh-Jeans law. Hub unit is the
+/// kelvin. Takes one or two arguments: the spectral location (frequency, required),
+/// and a beam solid angle (required only when the flux side is per-beam Jy rather
+/// than per-steradian Jy/sr).
+///   S_nu = 2 k_B T_B nu^2 Omega / c^2   (Omega = beam solid angle)
 pub const brightness_temperature_equivalency = struct {
     const sterad_dim: Dim = si.sr.dim;
     const Jy: Unit = us.Jy;
@@ -679,6 +757,9 @@ pub const brightness_temperature_equivalency = struct {
     }
 };
 
+/// Plate-scale equivalency: converts between a focal-plane length and an angle on the
+/// sky, given a plate scale in length/angle (e.g. m/rad). Direct two-way conversion.
+///   length = angle * plate_scale,   angle = length / plate_scale
 pub const plate_scale_equivalency = struct {
     const plate_scale_unit: Unit = si.m.div(si.rad);
     const plate_scale_dim: Dim = plate_scale_unit.dim;
@@ -710,6 +791,10 @@ pub const plate_scale_equivalency = struct {
     }
 };
 
+/// Pixel-scale equivalency: converts between pixels and a physical quantity (an angle
+/// or a length), given a pixel scale such as arcsec/pixel or pixel/cm. Because pixel
+/// is dimensionless, the conversion is driven by inspecting the pixel exponent in the
+/// scale's symbol rather than by dimension alone.
 pub const pixel_scale_equivalency = struct {
     fn checkArgs(args: anytype) void {
         const ArgsType = @TypeOf(args);
@@ -769,6 +854,16 @@ pub const pixel_scale_equivalency = struct {
     }
 };
 
+/// Spectral-density equivalency: converts between per-frequency and per-wavelength
+/// spectral densities (and their nu*F_nu integrated form) at a given spectral
+/// location, applying the Jacobian dnu/dlambda = c/lambda^2. Supports four families,
+/// each with its own per-frequency hub:
+///   - flux density           (F_nu  <-> F_lambda  <-> nu F_nu)
+///   - luminosity density     (L_nu  <-> L_lambda  <-> nu L_nu)
+///   - surface brightness     (S_nu  <-> S_lambda  <-> nu S_nu),      per steradian
+///   - luminosity surface br. (SL_nu <-> SL_lambda <-> nu SL_nu),     per steradian
+/// The Jacobian is identical across families; only the extra dimensions differ.
+/// Requires one argument: the spectral location as a spectral-compatible Quantity.
 // TODO: support photon base units
 pub const spectral_density_equivalency = struct {
     // Flux
@@ -922,6 +1017,9 @@ pub const spectral_density_equivalency = struct {
 // a bit misleading in my opinion.
 // "logarithmic",
 // "thermodynamic_temperature" -> requires cosmology
+/// The set of named equivalencies, used as a comptime selector by
+/// `Quantity.toWithEquivalency`. Each variant maps to the correspondingly named
+/// equivalency struct above.
 pub const Equivalency = enum {
     const Self = @This();
 
@@ -943,6 +1041,10 @@ pub const Equivalency = enum {
     pixel_scale,
     spectral_density,
 
+    /// Dispatches to the selected equivalency's `convert`. `self` is comptime so the
+    /// switch compiles only the chosen branch, which is why equivalencies that take
+    /// no `args` never see the (possibly empty) tuple. The `args` tuple is forwarded
+    /// only to the equivalencies that require it.
     pub fn convert(comptime self: Self, comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         const ArgsType = @TypeOf(args);
         const args_type_info = @typeInfo(ArgsType);
