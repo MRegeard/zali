@@ -23,12 +23,12 @@ pub const spectral_equivalency = struct {
     const dim_wavenumber_spec: Dim = si.m.pow(-1).dim;
     const dim_wavenumber_ang: Dim = si.rad.div(si.m).dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_Hz: Quantity(T, Hz) = toHz(T, U_in, input_quantity);
-        return fromHz(T, as_Hz, U_out);
+        return fromHz(T, &as_Hz, U_out);
     }
 
-    fn toHz(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, si.Hz) {
+    fn toHz(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, si.Hz) {
         const two_pi: Quantity(T, si.rad) = .initScalarValue(2 * std.math.pi);
         const h: Quantity(T, cst.h.quantity.getUnit()) = .initScalarValue(cst.h.quantity.value);
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
@@ -41,7 +41,7 @@ pub const spectral_equivalency = struct {
         unreachable;
     }
 
-    fn fromHz(comptime T: type, input_quantity: Quantity(T, Hz), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromHz(comptime T: type, input_quantity: *const Quantity(T, Hz), comptime U_out: Unit) Quantity(T, U_out) {
         const two_pi: Quantity(T, si.rad) = .initScalarValue(2 * std.math.pi);
         const h: Quantity(T, cst.h.quantity.getUnit()) = .initScalarValue(cst.h.quantity.value);
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
@@ -61,12 +61,12 @@ pub const mass_energy_equivalency = struct {
     const dim_energy: Dim = si.J.dim;
     const dim_mass: Dim = si.kg.dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_J: Quantity(T, J) = toJ(T, U_in, input_quantity);
-        return fromJ(T, as_J, U_out);
+        return fromJ(T, &as_J, U_out);
     }
 
-    fn toJ(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, J) {
+    fn toJ(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, J) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_in.dim.eql(dim_energy)) return input_quantity.to(J);
         if (comptime U_in.dim.eql(dim_mass)) return input_quantity.mul(c.pow(2)).to(J);
@@ -74,7 +74,7 @@ pub const mass_energy_equivalency = struct {
         unreachable;
     }
 
-    fn fromJ(comptime T: type, input_quantity: Quantity(T, J), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromJ(comptime T: type, input_quantity: *const Quantity(T, J), comptime U_out: Unit) Quantity(T, U_out) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_out.dim.eql(dim_energy)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(dim_mass)) return input_quantity.div(c.pow(2)).to(U_out);
@@ -88,12 +88,12 @@ pub const temperature_energy_equivalency = struct {
     const dim_energy: Dim = si.J.dim;
     const dim_temp: Dim = si.K.dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_J: Quantity(T, J) = toJ(T, U_in, input_quantity);
-        return fromJ(T, as_J, U_out);
+        return fromJ(T, &as_J, U_out);
     }
 
-    fn toJ(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, J) {
+    fn toJ(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, J) {
         const k_B: Quantity(T, cst.k_B.quantity.getUnit()) = .initScalarValue(cst.k_B.quantity.value);
         if (comptime U_in.dim.eql(dim_energy)) return input_quantity.to(J);
         if (comptime U_in.dim.eql(dim_temp)) return input_quantity.to(si.K).mul(k_B).to(J);
@@ -101,7 +101,7 @@ pub const temperature_energy_equivalency = struct {
         unreachable;
     }
 
-    fn fromJ(comptime T: type, input_quantity: Quantity(T, J), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromJ(comptime T: type, input_quantity: *const Quantity(T, J), comptime U_out: Unit) Quantity(T, U_out) {
         const k_B: Quantity(T, cst.k_B.quantity.getUnit()) = .initScalarValue(cst.k_B.quantity.value);
         if (comptime U_out.dim.eql(dim_energy)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(dim_temp)) return input_quantity.div(k_B).to(U_out);
@@ -114,7 +114,7 @@ pub const temperature_energy_equivalency = struct {
 // are not handled by regular .to(). In this implementation, offset handling is
 // built into the unit system, so this equivalency simply delegates to .to().
 pub const temperature_equivalency = struct {
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         return input_quantity.to(U_out);
     }
 };
@@ -125,12 +125,12 @@ pub const molar_mass_amu_equivalency = struct {
     const amu: Unit = misc.u;
     const amu_dim: Dim = amu.dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_amu: Quantity(T, amu) = toAmu(T, U_in, input_quantity);
-        return fromAmu(T, as_amu, U_out);
+        return fromAmu(T, &as_amu, U_out);
     }
 
-    fn toAmu(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, amu) {
+    fn toAmu(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, amu) {
         const N_A: Quantity(T, cst.N_A.quantity.getUnit()) = .initScalarValue(cst.N_A.quantity.value);
         if (comptime U_in.dim.eql(amu_dim)) return input_quantity.to(amu);
         if (comptime U_in.dim.eql(molar_mass_dim)) return input_quantity.div(N_A).to(amu);
@@ -138,7 +138,7 @@ pub const molar_mass_amu_equivalency = struct {
         unreachable;
     }
 
-    fn fromAmu(comptime T: type, input_quantity: Quantity(T, amu), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromAmu(comptime T: type, input_quantity: *const Quantity(T, amu), comptime U_out: Unit) Quantity(T, U_out) {
         const N_A: Quantity(T, cst.N_A.quantity.getUnit()) = .initScalarValue(cst.N_A.quantity.value);
         if (comptime U_out.dim.eql(amu_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(molar_mass_dim)) return input_quantity.mul(N_A).to(U_out);
@@ -151,12 +151,12 @@ pub const doppler_redshift_equivalency = struct {
     const rv_unit: Unit = us.km.div(si.s);
     const rv_dim: Dim = rv_unit.dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity);
-        return fromRv(T, as_rv, U_out);
+        return fromRv(T, &as_rv, U_out);
     }
 
-    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, rv_unit) {
+    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, rv_unit) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         const one: Quantity(T, UNITLESS) = .initScalarValue(1);
         if (comptime U_in.dim.eql(rv_dim)) return input_quantity.to(rv_unit);
@@ -168,7 +168,7 @@ pub const doppler_redshift_equivalency = struct {
         unreachable;
     }
 
-    fn fromRv(comptime T: type, input_quantity: Quantity(T, rv_unit), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromRv(comptime T: type, input_quantity: *const Quantity(T, rv_unit), comptime U_out: Unit) Quantity(T, U_out) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         const one: Quantity(T, UNITLESS) = .initScalarValue(1);
         if (comptime U_out.dim.eql(rv_dim)) return input_quantity.to(U_out);
@@ -182,14 +182,14 @@ pub const doppler_redshift_equivalency = struct {
 };
 
 pub const dimensionless_angles_equivalency = struct {
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_unitless: Quantity(T, UNITLESS) = toUnitless(T, U_in, input_quantity);
-        return fromUnitless(T, as_unitless, U_out);
+        return fromUnitless(T, &as_unitless, U_out);
     }
 
-    fn toUnitless(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, UNITLESS) {
+    fn toUnitless(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, UNITLESS) {
         const u_in_dim: Dim = U_in.dim;
-        if (comptime U_in.eqlExact(UNITLESS)) return input_quantity;
+        if (comptime U_in.eqlExact(UNITLESS)) return input_quantity.*;
         if (comptime u_in_dim.l.eqlScalar(0) and
             u_in_dim.m.eqlScalar(0) and
             u_in_dim.t.eqlScalar(0) and
@@ -202,9 +202,9 @@ pub const dimensionless_angles_equivalency = struct {
         unreachable;
     }
 
-    fn fromUnitless(comptime T: type, input_quantity: Quantity(T, UNITLESS), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromUnitless(comptime T: type, input_quantity: *const Quantity(T, UNITLESS), comptime U_out: Unit) Quantity(T, U_out) {
         const u_out_dim: Dim = U_out.dim;
-        if (comptime U_out.eqlExact(UNITLESS)) return input_quantity;
+        if (comptime U_out.eqlExact(UNITLESS)) return input_quantity.*;
         if (comptime u_out_dim.l.eqlScalar(0) and
             u_out_dim.m.eqlScalar(0) and
             u_out_dim.t.eqlScalar(0) and
@@ -226,12 +226,12 @@ pub const parallax_equivalency = struct {
     const pc: Unit = us.pc;
     const pc_dim: Dim = pc.dim;
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit) Quantity(T, U_out) {
         const as_arcsec: Quantity(T, si.arcsec) = toArcsec(T, U_in, input_quantity);
-        return fromArcsec(T, as_arcsec, U_out);
+        return fromArcsec(T, &as_arcsec, U_out);
     }
 
-    fn toArcsec(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in)) Quantity(T, as) {
+    fn toArcsec(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in)) Quantity(T, as) {
         const one: Quantity(T, pc) = .initScalarValue(1);
         if (comptime U_in.dim.eql(as_dim)) return input_quantity.to(as);
         if (comptime U_in.dim.eql(pc_dim)) return .init(one.div(input_quantity.to(pc)).value);
@@ -239,10 +239,10 @@ pub const parallax_equivalency = struct {
         unreachable;
     }
 
-    fn fromArcsec(comptime T: type, input_quantity: Quantity(T, as), comptime U_out: Unit) Quantity(T, U_out) {
+    fn fromArcsec(comptime T: type, input_quantity: *const Quantity(T, as), comptime U_out: Unit) Quantity(T, U_out) {
         const one: Quantity(T, as) = .initScalarValue(1);
         if (comptime U_out.dim.eql(as_dim)) return input_quantity.to(U_out);
-        if (comptime U_out.dim.eql(pc_dim)) return Quantity(T, pc).init(one.div(input_quantity).value).to(U_out);
+        if (comptime U_out.dim.eql(pc_dim)) return Quantity(T, pc).init(one.div(input_quantity.*).value).to(U_out);
         if (@inComptime()) @compileError("Unknown parallax equivalency conversion.");
         unreachable;
     }
@@ -266,7 +266,7 @@ pub const zero_point_flux_equivalency = struct {
 
     // TODO: check that the args is in the right "value" type (T) or else make it. To be done after
     // the quantity type refinement is done.
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const flux0 = args.@"0";
         const Flux0Type = @TypeOf(args.@"0");
@@ -309,22 +309,22 @@ pub const doppler_relativistic_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const rest = args.@"0";
         const RestType = @TypeOf(args.@"0");
         const rest_unit = comptime RestType.unit;
-        const rest_hz = spectral_equivalency.convert(T, rest_unit, rest, si.Hz);
-        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, rest_hz);
-        return fromRv(T, as_rv, U_out, rest_hz);
+        const rest_hz = spectral_equivalency.convert(T, rest_unit, &rest, si.Hz);
+        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, &rest_hz);
+        return fromRv(T, &as_rv, U_out, &rest_hz);
     }
 
-    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), rest: Quantity(T, si.Hz)) Quantity(T, rv_unit) {
+    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), rest: *const Quantity(T, si.Hz)) Quantity(T, rv_unit) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_in.dim.eql(rv_dim)) return input_quantity.to(rv_unit);
         if (comptime U_in.dim.eql(frequency_dim)) {
             const f = input_quantity.to(si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (comptime U_in.dim.eql(wavelength_dim) or
             U_in.dim.eql(energy_dim) or
@@ -332,17 +332,17 @@ pub const doppler_relativistic_equivalency = struct {
             U_in.dim.eql(wavenumber_ang_dim))
         {
             const f = spectral_equivalency.convert(T, U_in, input_quantity, si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (@inComptime()) @compileError("Unknown doppler relativistic equivalency conversion.");
         unreachable;
     }
 
-    fn fromRv(comptime T: type, input_quantity: Quantity(T, rv_unit), comptime U_out: Unit, rest: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromRv(comptime T: type, input_quantity: *const Quantity(T, rv_unit), comptime U_out: Unit, rest: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_out.dim.eql(rv_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(frequency_dim)) {
-            const f: Quantity(T, si.Hz) = rvToF(T, input_quantity, rest, c_kms);
+            const f: Quantity(T, si.Hz) = rvToF(T, input_quantity, rest, &c_kms);
             return f.to(U_out);
         }
         if (comptime U_out.dim.eql(energy_dim) or
@@ -350,22 +350,22 @@ pub const doppler_relativistic_equivalency = struct {
             U_out.dim.eql(wavenumber_spec_dim) or
             U_out.dim.eql(wavenumber_ang_dim))
         {
-            const f: Quantity(T, si.Hz) = rvToF(T, input_quantity, rest, c_kms);
-            return spectral_equivalency.convert(T, si.Hz, f, U_out);
+            const f: Quantity(T, si.Hz) = rvToF(T, input_quantity, &rest, &c_kms);
+            return spectral_equivalency.convert(T, si.Hz, &f, U_out);
         }
         if (@inComptime()) @compileError("Unknown doppler relativistic equivalency conversion.");
         unreachable;
     }
 
-    fn fToRv(comptime T: type, freq: Quantity(T, si.Hz), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, rv_unit) {
+    fn fToRv(comptime T: type, freq: *const Quantity(T, si.Hz), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, rv_unit) {
         const f0sq = rest.pow(2);
         const fsq = freq.pow(2);
         return c_kms.mul(f0sq.sub(fsq)).div(f0sq.add(fsq)).to(rv_unit);
     }
 
-    fn rvToF(comptime T: type, rv: Quantity(T, rv_unit), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, si.Hz) {
+    fn rvToF(comptime T: type, rv: *const Quantity(T, rv_unit), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, si.Hz) {
         const one: Quantity(T, UNITLESS) = .initScalarValue(1);
-        const beta = rv.div(c_kms).to(UNITLESS);
+        const beta = rv.div(c_kms.*).to(UNITLESS);
         return rest.mul(one.sub(beta.pow(2)).sqrt()).div(one.add(beta));
     }
 };
@@ -394,22 +394,22 @@ pub const doppler_optical_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const rest = args.@"0";
         const RestType = @TypeOf(args.@"0");
         const rest_unit = comptime RestType.unit;
-        const rest_hz = spectral_equivalency.convert(T, rest_unit, rest, si.Hz);
-        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, rest_hz);
-        return fromRv(T, as_rv, U_out, rest_hz);
+        const rest_hz = spectral_equivalency.convert(T, rest_unit, &rest, si.Hz);
+        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, &rest_hz);
+        return fromRv(T, &as_rv, U_out, &rest_hz);
     }
 
-    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), rest: Quantity(T, si.Hz)) Quantity(T, rv_unit) {
+    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), rest: *const Quantity(T, si.Hz)) Quantity(T, rv_unit) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_in.dim.eql(rv_dim)) return input_quantity.to(rv_unit);
         if (comptime U_in.dim.eql(frequency_dim)) {
             const f = input_quantity.to(si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (comptime U_in.dim.eql(wavelength_dim) or
             U_in.dim.eql(energy_dim) or
@@ -417,17 +417,17 @@ pub const doppler_optical_equivalency = struct {
             U_in.dim.eql(wavenumber_ang_dim))
         {
             const f = spectral_equivalency.convert(T, U_in, input_quantity, si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (@inComptime()) @compileError("Unknown doppler optical equivalency conversion.");
         unreachable;
     }
 
-    fn fromRv(comptime T: type, input_quantity: Quantity(T, rv_unit), comptime U_out: Unit, rest: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromRv(comptime T: type, input_quantity: *const Quantity(T, rv_unit), comptime U_out: Unit, rest: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_out.dim.eql(rv_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(frequency_dim)) {
-            const f = rvToF(T, input_quantity, rest, c_kms);
+            const f = rvToF(T, input_quantity, rest, &c_kms);
             return f.to(U_out);
         }
         if (comptime U_out.dim.eql(energy_dim) or
@@ -435,22 +435,22 @@ pub const doppler_optical_equivalency = struct {
             U_out.dim.eql(wavenumber_spec_dim) or
             U_out.dim.eql(wavenumber_ang_dim))
         {
-            const f = rvToF(T, input_quantity, rest, c_kms);
-            return spectral_equivalency.convert(T, si.Hz, f, U_out);
+            const f = rvToF(T, input_quantity, rest, &c_kms);
+            return spectral_equivalency.convert(T, si.Hz, &f, U_out);
         }
         if (@inComptime()) @compileError("Unknown doppler optical equivalency conversion.");
         unreachable;
     }
 
-    fn fToRv(comptime T: type, freq: Quantity(T, si.Hz), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, rv_unit) {
+    fn fToRv(comptime T: type, freq: *const Quantity(T, si.Hz), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, rv_unit) {
         // v = c * (f0 - f) / f
-        return c_kms.mul(rest.sub(freq)).div(freq).to(rv_unit);
+        return c_kms.mul(rest.sub(freq.*)).div(freq.*).to(rv_unit);
     }
 
-    fn rvToF(comptime T: type, rv: Quantity(T, rv_unit), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, si.Hz) {
+    fn rvToF(comptime T: type, rv: *const Quantity(T, rv_unit), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, si.Hz) {
         // f = f0 / (1 + v/c)
         const one: Quantity(T, UNITLESS) = .initScalarValue(1);
-        const beta = rv.div(c_kms).to(UNITLESS);
+        const beta = rv.div(c_kms.*).to(UNITLESS);
         return rest.div(one.add(beta));
     }
 };
@@ -479,22 +479,22 @@ pub const doppler_radio_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const rest = args.@"0";
         const RestType = @TypeOf(args.@"0");
         const rest_unit = comptime RestType.unit;
-        const rest_hz = spectral_equivalency.convert(T, rest_unit, rest, si.Hz);
-        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, rest_hz);
-        return fromRv(T, as_rv, U_out, rest_hz);
+        const rest_hz = spectral_equivalency.convert(T, rest_unit, &rest, si.Hz);
+        const as_rv: Quantity(T, rv_unit) = toRv(T, U_in, input_quantity, &rest_hz);
+        return fromRv(T, &as_rv, U_out, &rest_hz);
     }
 
-    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), rest: Quantity(T, si.Hz)) Quantity(T, rv_unit) {
+    fn toRv(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), rest: *const Quantity(T, si.Hz)) Quantity(T, rv_unit) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_in.dim.eql(rv_dim)) return input_quantity.to(rv_unit);
         if (comptime U_in.dim.eql(frequency_dim)) {
             const f = input_quantity.to(si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (comptime U_in.dim.eql(wavelength_dim) or
             U_in.dim.eql(energy_dim) or
@@ -502,17 +502,17 @@ pub const doppler_radio_equivalency = struct {
             U_in.dim.eql(wavenumber_ang_dim))
         {
             const f = spectral_equivalency.convert(T, U_in, input_quantity, si.Hz);
-            return fToRv(T, f, rest, c_kms);
+            return fToRv(T, &f, rest, &c_kms);
         }
         if (@inComptime()) @compileError("Unknown doppler radio equivalency conversion.");
         unreachable;
     }
 
-    fn fromRv(comptime T: type, input_quantity: Quantity(T, rv_unit), comptime U_out: Unit, rest: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromRv(comptime T: type, input_quantity: *const Quantity(T, rv_unit), comptime U_out: Unit, rest: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c_kms: Quantity(T, rv_unit) = .initScalarValue(cst.c.quantity.to(rv_unit).value);
         if (comptime U_out.dim.eql(rv_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(frequency_dim)) {
-            const f = rvToF(T, input_quantity, rest, c_kms);
+            const f = rvToF(T, input_quantity, rest, &c_kms);
             return f.to(U_out);
         }
         if (comptime U_out.dim.eql(energy_dim) or
@@ -520,22 +520,22 @@ pub const doppler_radio_equivalency = struct {
             U_out.dim.eql(wavenumber_spec_dim) or
             U_out.dim.eql(wavenumber_ang_dim))
         {
-            const f = rvToF(T, input_quantity, rest, c_kms);
-            return spectral_equivalency.convert(T, si.Hz, f, U_out);
+            const f = rvToF(T, input_quantity, rest, &c_kms);
+            return spectral_equivalency.convert(T, si.Hz, &f, U_out);
         }
         if (@inComptime()) @compileError("Unknown doppler radio equivalency conversion.");
         unreachable;
     }
 
-    fn fToRv(comptime T: type, freq: Quantity(T, si.Hz), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, rv_unit) {
+    fn fToRv(comptime T: type, freq: *const Quantity(T, si.Hz), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, rv_unit) {
         // v = c * (f0 - f) / f0
-        return c_kms.mul(rest.sub(freq)).div(rest).to(rv_unit);
+        return c_kms.mul(rest.sub(freq.*)).div(rest.*).to(rv_unit);
     }
 
-    fn rvToF(comptime T: type, rv: Quantity(T, rv_unit), rest: Quantity(T, si.Hz), c_kms: Quantity(T, rv_unit)) Quantity(T, si.Hz) {
+    fn rvToF(comptime T: type, rv: *const Quantity(T, rv_unit), rest: *const Quantity(T, si.Hz), c_kms: *const Quantity(T, rv_unit)) Quantity(T, si.Hz) {
         // f = f0 * (1 - v/c)
         const one: Quantity(T, UNITLESS) = .initScalarValue(1);
-        const beta = rv.div(c_kms).to(UNITLESS);
+        const beta = rv.div(c_kms.*).to(UNITLESS);
         return rest.mul(one.sub(beta));
     }
 };
@@ -564,24 +564,24 @@ pub const magnetic_flux_field_equivalency = struct {
         return .init(args.@"0".value);
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         const mu_r = checkArgsAndGetMuR(T, args);
-        const as_T = toT(T, U_in, input_quantity, mu_r);
-        return fromT(T, as_T, U_out, mu_r);
+        const as_T = toT(T, U_in, input_quantity, &mu_r);
+        return fromT(T, &as_T, U_out, &mu_r);
     }
 
-    fn toT(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), mu_r: Quantity(T, UNITLESS)) Quantity(T, si.T) {
+    fn toT(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), mu_r: *const Quantity(T, UNITLESS)) Quantity(T, si.T) {
         const mu_0: Quantity(T, cst.mu0.quantity.getUnit()) = .initScalarValue(cst.mu0.quantity.value);
         if (comptime U_in.dim.eql(B_field_dim)) return input_quantity.to(si.T);
-        if (comptime U_in.dim.eql(H_field_dim)) return input_quantity.mul(mu_0).mul(mu_r).to(si.T);
+        if (comptime U_in.dim.eql(H_field_dim)) return input_quantity.mul(mu_0).mul(mu_r.*).to(si.T);
         if (@inComptime()) @compileError("Unknown magnetic field flux equivalency conversion.");
         unreachable;
     }
 
-    fn fromT(comptime T: type, input_quantity: Quantity(T, si.T), comptime U_out: Unit, mu_r: Quantity(T, UNITLESS)) Quantity(T, U_out) {
+    fn fromT(comptime T: type, input_quantity: *const Quantity(T, si.T), comptime U_out: Unit, mu_r: *const Quantity(T, UNITLESS)) Quantity(T, U_out) {
         const mu_0: Quantity(T, cst.mu0.quantity.getUnit()) = .initScalarValue(cst.mu0.quantity.value);
         if (comptime U_out.dim.eql(B_field_dim)) return input_quantity.to(U_out);
-        if (comptime U_out.dim.eql(H_field_dim)) return input_quantity.div(mu_0.mul(mu_r)).to(U_out);
+        if (comptime U_out.dim.eql(H_field_dim)) return input_quantity.div(mu_0.mul(mu_r.*)).to(U_out);
         if (@inComptime()) @compileError("Unknown magnetic field flux equivalency conversion.");
         unreachable;
     }
@@ -617,28 +617,28 @@ pub const brightness_temperature_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const arg_number: usize = @typeInfo(@TypeOf(args)).@"struct".fields.len;
         const spectral_quantity = args.@"0";
         const spectral_quantity_unit = comptime @TypeOf(spectral_quantity).unit;
-        const freq: Quantity(T, si.Hz) = spectral_equivalency.convert(T, spectral_quantity_unit, spectral_quantity, si.Hz);
+        const freq: Quantity(T, si.Hz) = spectral_equivalency.convert(T, spectral_quantity_unit, &spectral_quantity, si.Hz);
         if (comptime arg_number == 2) {
             const beam = args.@"1".to(si.sr);
-            const as_K = toK(T, U_in, arg_number, input_quantity, freq, beam);
-            return fromK(T, as_K, U_out, arg_number, freq, beam);
+            const as_K = toK(T, U_in, arg_number, input_quantity, &freq, &beam);
+            return fromK(T, &as_K, U_out, arg_number, &freq, &beam);
         }
-        const as_K = toK(T, U_in, arg_number, input_quantity, freq, {});
-        return fromK(T, as_K, U_out, arg_number, freq, {});
+        const as_K = toK(T, U_in, arg_number, input_quantity, &freq, {});
+        return fromK(T, &as_K, U_out, arg_number, &freq, {});
     }
 
     fn toK(
         comptime T: type,
         comptime U_in: Unit,
         comptime n_args: usize,
-        input_quantity: Quantity(T, U_in),
-        freq: Quantity(T, si.Hz),
-        beam: if (n_args == 2) Quantity(T, si.sr) else void,
+        input_quantity: *const Quantity(T, U_in),
+        freq: *const Quantity(T, si.Hz),
+        beam: if (n_args == 2) *const Quantity(T, si.sr) else void,
     ) Quantity(T, si.K) {
         const c2: Quantity(T, cst.c.quantity.getUnit().pow(2)) = .initScalarValue(cst.c.quantity.pow(2).value);
         const two_kb: Quantity(T, cst.k_B.quantity.getUnit()) = .initScalarValue(cst.k_B.quantity.mulValue(2).value);
@@ -647,7 +647,7 @@ pub const brightness_temperature_equivalency = struct {
         if (comptime U_in.dim.eql(K_dim)) return input_quantity.to(si.K);
         if (comptime U_in.dim.eql(Jy_dim) and n_args == 2) {
             if (comptime n_args != 2) @compileError("Converting Jy to K required a beam area as a second argument.");
-            return input_quantity.to(Jy).mul(c2).div(two_kb.mul(nu2).mul(beam)).mul(one_sr).to(si.K);
+            return input_quantity.to(Jy).mul(c2).div(two_kb.mul(nu2).mul(beam.*)).mul(one_sr).to(si.K);
         }
         if (comptime U_in.dim.eql(JySr_dim)) {
             return input_quantity.to(JySr).mul(c2).div(two_kb.mul(nu2)).mul(one_sr).to(si.K);
@@ -658,11 +658,11 @@ pub const brightness_temperature_equivalency = struct {
 
     fn fromK(
         comptime T: type,
-        input_quantity: Quantity(T, si.K),
+        input_quantity: *const Quantity(T, si.K),
         comptime U_out: Unit,
         comptime n_args: usize,
-        freq: Quantity(T, si.Hz),
-        beam: if (n_args == 2) Quantity(T, si.sr) else void,
+        freq: *const Quantity(T, si.Hz),
+        beam: if (n_args == 2) *const Quantity(T, si.sr) else void,
     ) Quantity(T, U_out) {
         const c2: Quantity(T, cst.c.quantity.getUnit().pow(2)) = .initScalarValue(cst.c.quantity.pow(2).value);
         const two_kb: Quantity(T, cst.k_B.quantity.getUnit()) = .initScalarValue(cst.k_B.quantity.mulValue(2).value);
@@ -671,9 +671,9 @@ pub const brightness_temperature_equivalency = struct {
         if (comptime U_out.dim.eql(K_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(Jy_dim)) {
             if (comptime n_args != 2) @compileError("Converting K to Jy required a beam area as a second argument.");
-            return two_kb.mul(input_quantity).mul(nu2).mul(beam).div(c2).div(one_sr).to(U_out);
+            return two_kb.mul(input_quantity.*).mul(nu2).mul(beam.*).div(c2).div(one_sr).to(U_out);
         }
-        if (comptime U_out.dim.eql(JySr_dim)) return two_kb.mul(input_quantity).mul(nu2).div(c2).div(one_sr).to(U_out);
+        if (comptime U_out.dim.eql(JySr_dim)) return two_kb.mul(input_quantity.*).mul(nu2).div(c2).div(one_sr).to(U_out);
         if (@inComptime()) @compileError("Unknown brightness temperature flux equivalency conversion.");
         unreachable;
     }
@@ -700,7 +700,7 @@ pub const plate_scale_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const plate_scale = args.@"0";
         if (comptime U_in.dim.eql(length_dim) and U_out.dim.eql(angle_dim)) return input_quantity.div(plate_scale).to(U_out);
@@ -734,8 +734,7 @@ pub const pixel_scale_equivalency = struct {
         unreachable;
     }
 
-    // TODO: check of the presence of pix in symbol instead of the dimension since pix is dimensionless.
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const pixel_scale = args.@"0";
         const pixel_scale_type = @TypeOf(pixel_scale);
@@ -819,95 +818,95 @@ pub const spectral_density_equivalency = struct {
         }
     }
 
-    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         checkArgs(args);
         const spectral_quantity = args.@"0";
         const spectral_quantity_unit = comptime @TypeOf(spectral_quantity).unit;
-        const freq: Quantity(T, si.Hz) = spectral_equivalency.convert(T, spectral_quantity_unit, spectral_quantity, si.Hz);
+        const freq: Quantity(T, si.Hz) = spectral_equivalency.convert(T, spectral_quantity_unit, &spectral_quantity, si.Hz);
         if (comptime U_in.dim.eql(Fnu_dim) or U_in.dim.eql(Flamb_dim) or U_in.dim.eql(nuFnu_dim)) {
-            const as_Fnu = toFnu(T, U_in, input_quantity, freq);
-            return fromFnu(T, as_Fnu, U_out, freq);
+            const as_Fnu = toFnu(T, U_in, input_quantity, &freq);
+            return fromFnu(T, &as_Fnu, U_out, &freq);
         }
         if (comptime U_in.dim.eql(Lnu_dim) or U_in.dim.eql(Llamb_dim) or U_in.dim.eql(nuLnu_dim)) {
-            const as_Lnu = toLnu(T, U_in, input_quantity, freq);
-            return fromLnu(T, as_Lnu, U_out, freq);
+            const as_Lnu = toLnu(T, U_in, input_quantity, &freq);
+            return fromLnu(T, &as_Lnu, U_out, &freq);
         }
         if (comptime U_in.dim.eql(Snu_dim) or U_in.dim.eql(Slamb_dim) or U_in.dim.eql(nuSnu_dim)) {
-            const as_Snu = toSnu(T, U_in, input_quantity, freq);
-            return fromSnu(T, as_Snu, U_out, freq);
+            const as_Snu = toSnu(T, U_in, input_quantity, &freq);
+            return fromSnu(T, &as_Snu, U_out, &freq);
         }
         if (comptime U_in.dim.eql(SLnu_dim) or U_in.dim.eql(SLlamb_dim) or U_in.dim.eql(nuSLnu_dim)) {
-            const as_SLnu = toSLnu(T, U_in, input_quantity, freq);
-            return fromSLnu(T, as_SLnu, U_out, freq);
+            const as_SLnu = toSLnu(T, U_in, input_quantity, &freq);
+            return fromSLnu(T, &as_SLnu, U_out, &freq);
         }
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn toFnu(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), freq: Quantity(T, si.Hz)) Quantity(T, Fnu) {
+    fn toFnu(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), freq: *const Quantity(T, si.Hz)) Quantity(T, Fnu) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_in.dim.eql(Fnu_dim)) return input_quantity.to(Fnu);
         if (comptime U_in.dim.eql(Flamb_dim)) return input_quantity.mul(c).div(freq.pow(2)).to(Fnu);
-        if (comptime U_in.dim.eql(nuFnu_dim)) return input_quantity.div(freq).to(Fnu);
+        if (comptime U_in.dim.eql(nuFnu_dim)) return input_quantity.div(freq.*).to(Fnu);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn fromFnu(comptime T: type, input_quantity: Quantity(T, Fnu), comptime U_out: Unit, freq: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromFnu(comptime T: type, input_quantity: *const Quantity(T, Fnu), comptime U_out: Unit, freq: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_out.dim.eql(Fnu_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(Flamb_dim)) return input_quantity.mul(freq.pow(2)).div(c).to(U_out);
-        if (comptime U_out.dim.eql(nuFnu_dim)) return input_quantity.mul(freq).to(U_out);
+        if (comptime U_out.dim.eql(nuFnu_dim)) return input_quantity.mul(freq.*).to(U_out);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn toLnu(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), freq: Quantity(T, si.Hz)) Quantity(T, Lnu) {
+    fn toLnu(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), freq: *const Quantity(T, si.Hz)) Quantity(T, Lnu) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_in.dim.eql(Lnu_dim)) return input_quantity.to(Lnu);
         if (comptime U_in.dim.eql(Llamb_dim)) return input_quantity.mul(c).div(freq.pow(2)).to(Lnu);
-        if (comptime U_in.dim.eql(nuLnu_dim)) return input_quantity.div(freq).to(Lnu);
+        if (comptime U_in.dim.eql(nuLnu_dim)) return input_quantity.div(freq.*).to(Lnu);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn fromLnu(comptime T: type, input_quantity: Quantity(T, Lnu), comptime U_out: Unit, freq: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromLnu(comptime T: type, input_quantity: *const Quantity(T, Lnu), comptime U_out: Unit, freq: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_out.dim.eql(Lnu_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(Llamb_dim)) return input_quantity.mul(freq.pow(2)).div(c).to(U_out);
-        if (comptime U_out.dim.eql(nuLnu_dim)) return input_quantity.mul(freq).to(U_out);
+        if (comptime U_out.dim.eql(nuLnu_dim)) return input_quantity.mul(freq.*).to(U_out);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn toSnu(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), freq: Quantity(T, si.Hz)) Quantity(T, Snu) {
+    fn toSnu(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), freq: *const Quantity(T, si.Hz)) Quantity(T, Snu) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_in.dim.eql(Snu_dim)) return input_quantity.to(Snu);
         if (comptime U_in.dim.eql(Slamb_dim)) return input_quantity.mul(c).div(freq.pow(2)).to(Snu);
-        if (comptime U_in.dim.eql(nuSnu_dim)) return input_quantity.div(freq).to(Snu);
+        if (comptime U_in.dim.eql(nuSnu_dim)) return input_quantity.div(freq.*).to(Snu);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn fromSnu(comptime T: type, input_quantity: Quantity(T, Snu), comptime U_out: Unit, freq: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromSnu(comptime T: type, input_quantity: *const Quantity(T, Snu), comptime U_out: Unit, freq: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_out.dim.eql(Snu_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(Slamb_dim)) return input_quantity.mul(freq.pow(2)).div(c).to(U_out);
-        if (comptime U_out.dim.eql(nuSnu_dim)) return input_quantity.mul(freq).to(U_out);
+        if (comptime U_out.dim.eql(nuSnu_dim)) return input_quantity.mul(freq.*).to(U_out);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn toSLnu(comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), freq: Quantity(T, si.Hz)) Quantity(T, SLnu) {
+    fn toSLnu(comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), freq: *const Quantity(T, si.Hz)) Quantity(T, SLnu) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_in.dim.eql(SLnu_dim)) return input_quantity.to(SLnu);
         if (comptime U_in.dim.eql(SLlamb_dim)) return input_quantity.mul(c).div(freq.pow(2)).to(SLnu);
-        if (comptime U_in.dim.eql(nuSLnu_dim)) return input_quantity.div(freq).to(SLnu);
+        if (comptime U_in.dim.eql(nuSLnu_dim)) return input_quantity.div(freq.*).to(SLnu);
         if (@inComptime()) @compileError("Unknown spectral density equivalency conversion.");
         unreachable;
     }
 
-    fn fromSLnu(comptime T: type, input_quantity: Quantity(T, SLnu), comptime U_out: Unit, freq: Quantity(T, si.Hz)) Quantity(T, U_out) {
+    fn fromSLnu(comptime T: type, input_quantity: *const Quantity(T, SLnu), comptime U_out: Unit, freq: *const Quantity(T, si.Hz)) Quantity(T, U_out) {
         const c: Quantity(T, cst.c.quantity.getUnit()) = .initScalarValue(cst.c.quantity.value);
         if (comptime U_out.dim.eql(SLnu_dim)) return input_quantity.to(U_out);
         if (comptime U_out.dim.eql(SLlamb_dim)) return input_quantity.mul(freq.pow(2)).div(c).to(U_out);
@@ -922,7 +921,6 @@ pub const spectral_density_equivalency = struct {
 // "beam_angular_area", -> This requires a beam unit defined in astropy in "astrophys". But this is
 // a bit misleading in my opinion.
 // "logarithmic",
-// "spectral_density",
 // "thermodynamic_temperature" -> requires cosmology
 pub const Equivalency = enum {
     const Self = @This();
@@ -943,8 +941,9 @@ pub const Equivalency = enum {
     brightness_temperature,
     plate_scale,
     pixel_scale,
+    spectral_density,
 
-    pub fn convert(comptime self: Self, comptime T: type, comptime U_in: Unit, input_quantity: Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
+    pub fn convert(comptime self: Self, comptime T: type, comptime U_in: Unit, input_quantity: *const Quantity(T, U_in), comptime U_out: Unit, args: anytype) Quantity(T, U_out) {
         const ArgsType = @TypeOf(args);
         const args_type_info = @typeInfo(ArgsType);
         if (args_type_info != .@"struct") {
@@ -967,6 +966,7 @@ pub const Equivalency = enum {
             .brightness_temperature => brightness_temperature_equivalency.convert(T, U_in, input_quantity, U_out, args),
             .plate_scale => plate_scale_equivalency.convert(T, U_in, input_quantity, U_out, args),
             .pixel_scale => pixel_scale_equivalency.convert(T, U_in, input_quantity, U_out, args),
+            .spectral_density => spectral_density_equivalency.convert(T, U_in, input_quantity, U_out, args),
         };
     }
 };
@@ -974,119 +974,119 @@ pub const Equivalency = enum {
 test "spectral equivalency" {
     // Wavelength <-> Hz
     const green_wl: Quantity(f64, si.nm) = .init(550);
-    const green_freq = spectral_equivalency.convert(f64, si.nm, green_wl, si.Hz);
+    const green_freq = spectral_equivalency.convert(f64, si.nm, &green_wl, si.Hz);
     try testing.expectApproxEqRel(5.45077196e14, green_freq.value, 1e-8);
     try testing.expectEqual(si.Hz, green_freq.getUnit());
-    const green_wl_back = spectral_equivalency.convert(f64, si.Hz, green_freq, si.nm);
+    const green_wl_back = spectral_equivalency.convert(f64, si.Hz, &green_freq, si.nm);
     try testing.expectApproxEqAbs(green_wl.value, green_wl_back.value, 1e-15);
 
     // Wavelength <-> Energy
     const lyman: Quantity(f64, si.nm) = .init(121.567);
-    const lyman_en = spectral_equivalency.convert(f64, si.nm, lyman, us.eV);
+    const lyman_en = spectral_equivalency.convert(f64, si.nm, &lyman, us.eV);
     try testing.expectApproxEqRel(10.19883673, lyman_en.value, 1e-8);
     try testing.expectEqual(us.eV, lyman_en.getUnit());
-    const lyman_back = spectral_equivalency.convert(f64, us.eV, lyman_en, si.nm);
+    const lyman_back = spectral_equivalency.convert(f64, us.eV, &lyman_en, si.nm);
     try testing.expectApproxEqRel(lyman.value, lyman_back.value, 1e-15);
 
     // Hz <-> Energy
     const co_line: Quantity(f64, us.GHz) = .init(115.271);
-    const co_line_energy = spectral_equivalency.convert(f64, us.GHz, co_line, si.J);
+    const co_line_energy = spectral_equivalency.convert(f64, us.GHz, &co_line, si.J);
     try testing.expectApproxEqRel(7.63793732e-23, co_line_energy.value, 1e-8);
     try testing.expectEqual(si.J, co_line_energy.getUnit());
-    const co_line_back = spectral_equivalency.convert(f64, si.J, co_line_energy, us.GHz);
+    const co_line_back = spectral_equivalency.convert(f64, si.J, &co_line_energy, us.GHz);
     try testing.expectApproxEqRel(co_line.value, co_line_back.value, 1e-15);
 
     // Wavelength <-> Wavenumber spectroscopic
     const mir: Quantity(f64, us.um) = .init(10);
-    const mir_wn_spec = spectral_equivalency.convert(f64, us.um, mir, si.cm.pow(-1));
+    const mir_wn_spec = spectral_equivalency.convert(f64, us.um, &mir, si.cm.pow(-1));
     try testing.expectApproxEqAbs(1000, mir_wn_spec.value, 1e-15);
     try testing.expectEqual(si.cm.pow(-1), mir_wn_spec.getUnit());
-    const mir_back = spectral_equivalency.convert(f64, si.cm.pow(-1), mir_wn_spec, us.um);
+    const mir_back = spectral_equivalency.convert(f64, si.cm.pow(-1), &mir_wn_spec, us.um);
     try testing.expectApproxEqRel(mir.value, mir_back.value, 1e-15);
 
     // Wavelength <-> Wavenumber angular
-    const green_wn_ang = spectral_equivalency.convert(f64, us.nm, green_wl, si.rad.div(si.cm));
+    const green_wn_ang = spectral_equivalency.convert(f64, us.nm, &green_wl, si.rad.div(si.cm));
     try testing.expectApproxEqRel(114239.73285781, green_wn_ang.value, 1e-8);
     try testing.expectEqual(si.rad.div(si.cm), green_wn_ang.getUnit());
-    const green_wl_back_ang = spectral_equivalency.convert(f64, si.rad.div(si.cm), green_wn_ang, us.nm);
+    const green_wl_back_ang = spectral_equivalency.convert(f64, si.rad.div(si.cm), &green_wn_ang, us.nm);
     try testing.expectApproxEqRel(green_wl.value, green_wl_back_ang.value, 1e-15);
 }
 
 test "mass energy equivalency" {
-    const m_p_energy = mass_energy_equivalency.convert(f64, si.kg, cst.m_p.quantity, si.J);
+    const m_p_energy = mass_energy_equivalency.convert(f64, si.kg, &cst.m_p.quantity, si.J);
     try testing.expectApproxEqRel(1.50327762e-10, m_p_energy.value, 1e-8);
     try testing.expectEqual(si.J, m_p_energy.getUnit());
-    const m_p_back = mass_energy_equivalency.convert(f64, si.J, m_p_energy, si.kg);
+    const m_p_back = mass_energy_equivalency.convert(f64, si.J, &m_p_energy, si.kg);
     try testing.expectApproxEqRel(cst.m_p.quantity.value, m_p_back.value, 1e-15);
 }
 
 test "temperature energy equivalency" {
     const temp: Quantity(f64, si.K) = .init(300);
-    const to_en = temperature_energy_equivalency.convert(f64, si.K, temp, si.J);
+    const to_en = temperature_energy_equivalency.convert(f64, si.K, &temp, si.J);
     try testing.expectApproxEqRel(4.141947e-21, to_en.value, 1e-8);
     try testing.expectEqual(si.J, to_en.getUnit());
-    const temp_back = temperature_energy_equivalency.convert(f64, si.J, to_en, si.K);
+    const temp_back = temperature_energy_equivalency.convert(f64, si.J, &to_en, si.K);
     try testing.expectApproxEqRel(temp.value, temp_back.value, 1e-15);
 }
 
 test "molar mass amu equivalency" {
     const amu: Quantity(f64, misc.u) = .init(1);
-    const amu_to_mm = molar_mass_amu_equivalency.convert(f64, misc.u, amu, si.g.div(si.mol));
+    const amu_to_mm = molar_mass_amu_equivalency.convert(f64, misc.u, &amu, si.g.div(si.mol));
     try testing.expectApproxEqRel(1.0, amu_to_mm.value, 1e-8);
     try testing.expectEqual(si.g.div(si.mol), amu_to_mm.getUnit());
-    const amu_back = molar_mass_amu_equivalency.convert(f64, si.g.div(si.mol), amu_to_mm, misc.u);
+    const amu_back = molar_mass_amu_equivalency.convert(f64, si.g.div(si.mol), &amu_to_mm, misc.u);
     try testing.expectApproxEqRel(1.0, amu_back.value, 1e-15);
 }
 
 test "doppler redshift equivalency" {
     const cmb_z: Quantity(f64, UNITLESS) = .init(1089);
-    const cmb_v = doppler_redshift_equivalency.convert(f64, UNITLESS, cmb_z, us.km.div(si.s));
+    const cmb_v = doppler_redshift_equivalency.convert(f64, UNITLESS, &cmb_z, us.km.div(si.s));
     try testing.expectApproxEqRel(299791.9533418, cmb_v.value, 1e-8);
     try testing.expectEqual(us.km.div(si.s), cmb_v.getUnit());
-    const cmb_z_back = doppler_redshift_equivalency.convert(f64, us.km.div(si.s), cmb_v, UNITLESS);
+    const cmb_z_back = doppler_redshift_equivalency.convert(f64, us.km.div(si.s), &cmb_v, UNITLESS);
     try testing.expectApproxEqRel(cmb_z.value, cmb_z_back.value, 1e-8);
 }
 
 test "dimensionless angles equivalency" {
     const pi_rad: Quantity(f64, si.rad) = .init(std.math.pi);
-    const pi_dimless = dimensionless_angles_equivalency.convert(f64, si.rad, pi_rad, UNITLESS);
+    const pi_dimless = dimensionless_angles_equivalency.convert(f64, si.rad, &pi_rad, UNITLESS);
     try testing.expectApproxEqAbs(std.math.pi, pi_dimless.value, 1e-15);
     try testing.expectEqual(UNITLESS, pi_dimless.getUnit());
-    const pi_rad_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, pi_dimless, si.rad);
+    const pi_rad_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, &pi_dimless, si.rad);
     try testing.expectApproxEqAbs(std.math.pi, pi_rad_back.value, 1e-15);
     try testing.expectEqual(si.rad, pi_rad_back.getUnit());
 
     const one_rad: Quantity(f64, si.rad) = .init(1);
-    const one_dimless = dimensionless_angles_equivalency.convert(f64, si.rad, one_rad, UNITLESS);
+    const one_dimless = dimensionless_angles_equivalency.convert(f64, si.rad, &one_rad, UNITLESS);
     try testing.expectApproxEqAbs(1.0, one_dimless.value, 1e-15);
-    const one_rad_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, one_dimless, si.rad);
+    const one_rad_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, &one_dimless, si.rad);
     try testing.expectApproxEqAbs(1.0, one_rad_back.value, 1e-15);
 
     const deg_180: Quantity(f64, si.deg) = .init(180);
-    const deg_180_dimless = dimensionless_angles_equivalency.convert(f64, si.deg, deg_180, UNITLESS);
+    const deg_180_dimless = dimensionless_angles_equivalency.convert(f64, si.deg, &deg_180, UNITLESS);
     try testing.expectApproxEqAbs(std.math.pi, deg_180_dimless.value, 1e-15);
     try testing.expectEqual(UNITLESS, deg_180_dimless.getUnit());
-    const deg_180_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, deg_180_dimless, si.deg);
+    const deg_180_back = dimensionless_angles_equivalency.convert(f64, UNITLESS, &deg_180_dimless, si.deg);
     try testing.expectApproxEqAbs(180, deg_180_back.value, 1e-15);
     try testing.expectEqual(si.deg, deg_180_back.getUnit());
 }
 
 test "parallax equivalency" {
     const as_1: Quantity(f64, si.arcsec) = .init(1);
-    const pc = parallax_equivalency.convert(f64, si.arcsec, as_1, us.pc);
+    const pc = parallax_equivalency.convert(f64, si.arcsec, &as_1, us.pc);
     try testing.expectApproxEqAbs(1.0, pc.value, 1e-15);
     try testing.expectEqual(us.pc, pc.getUnit());
-    const as_1_back = parallax_equivalency.convert(f64, us.pc, pc, si.arcsec);
+    const as_1_back = parallax_equivalency.convert(f64, us.pc, &pc, si.arcsec);
     try testing.expectApproxEqAbs(1.0, as_1_back.value, 1e-15);
 }
 
 test "zero point flux equivalency" {
     const mag: Quantity(f64, photo.mgy) = .init(1);
     const flux0: Quantity(f64, us.Jy) = .init(3631);
-    const mag_to_flux = zero_point_flux_equivalency.convert(f64, photo.mgy, mag, us.Jy, .{flux0});
+    const mag_to_flux = zero_point_flux_equivalency.convert(f64, photo.mgy, &mag, us.Jy, .{flux0});
     try testing.expectApproxEqAbs(3631, mag_to_flux.value, 1e-15);
     try testing.expectEqual(us.Jy, mag_to_flux.getUnit());
-    const mag_back = zero_point_flux_equivalency.convert(f64, us.Jy, mag_to_flux, photo.mgy, .{flux0});
+    const mag_back = zero_point_flux_equivalency.convert(f64, us.Jy, &mag_to_flux, photo.mgy, .{flux0});
     try testing.expectApproxEqAbs(1, mag_back.value, 1e-15);
     try testing.expectEqual(photo.mgy, mag_back.getUnit());
 }
@@ -1095,20 +1095,20 @@ test "doppler relativistic equivalency" {
     const v_unit: Unit = comptime us.km.div(si.s);
     const f0: Quantity(f64, us.MHz) = .init(1420.405751768);
     const v1000: Quantity(f64, v_unit) = .init(1000);
-    const v1000_f = doppler_relativistic_equivalency.convert(f64, v_unit, v1000, us.MHz, .{f0});
+    const v1000_f = doppler_relativistic_equivalency.convert(f64, v_unit, &v1000, us.MHz, .{f0});
     try testing.expectApproxEqAbs(1415.67566395, v1000_f.value, 1e-8);
     try testing.expectEqual(us.MHz, v1000_f.getUnit());
-    const v1000_back = doppler_relativistic_equivalency.convert(f64, us.MHz, v1000_f, v_unit, .{f0});
+    const v1000_back = doppler_relativistic_equivalency.convert(f64, us.MHz, &v1000_f, v_unit, .{f0});
     try testing.expectApproxEqRel(1000, v1000_back.value, 1e-8);
 
     const v_09c: Quantity(f64, v_unit) = .init(270_000);
-    const v_09c_f = doppler_relativistic_equivalency.convert(f64, v_unit, v_09c, us.MHz, .{f0});
+    const v_09c_f = doppler_relativistic_equivalency.convert(f64, v_unit, &v_09c, us.MHz, .{f0});
     try testing.expectApproxEqAbs(324.79343469, v_09c_f.value, 1e-8);
-    const v_09c_back = doppler_relativistic_equivalency.convert(f64, us.MHz, v_09c_f, v_unit, .{f0});
+    const v_09c_back = doppler_relativistic_equivalency.convert(f64, us.MHz, &v_09c_f, v_unit, .{f0});
     try testing.expectApproxEqRel(270_000, v_09c_back.value, 1e-15);
 
     const wl_21: Quantity(f64, si.cm) = .init(21.106);
-    const wl_21f_v = doppler_relativistic_equivalency.convert(f64, si.cm, wl_21, v_unit, .{f0});
+    const wl_21f_v = doppler_relativistic_equivalency.convert(f64, si.cm, &wl_21, v_unit, .{f0});
     try testing.expectApproxEqAbs(-1.62003622, wl_21f_v.value, 1e-8);
 }
 
@@ -1116,10 +1116,10 @@ test "doppler optical equivalency" {
     const v_unit: Unit = comptime us.km.div(si.s);
     const f0: Quantity(f64, us.MHz) = .init(1420.405751768);
     const v_1000: Quantity(f64, v_unit) = .init(1000);
-    const v_1000_f = doppler_optical_equivalency.convert(f64, v_unit, v_1000, us.MHz, .{f0});
+    const v_1000_f = doppler_optical_equivalency.convert(f64, v_unit, &v_1000, us.MHz, .{f0});
     try testing.expectApproxEqAbs(1415.6835397776715, v_1000_f.value, 1e-8);
     try testing.expectEqual(us.MHz, v_1000_f.getUnit());
-    const v_1000_back = doppler_optical_equivalency.convert(f64, us.MHz, v_1000_f, v_unit, .{f0});
+    const v_1000_back = doppler_optical_equivalency.convert(f64, us.MHz, &v_1000_f, v_unit, .{f0});
     try testing.expectApproxEqRel(1000, v_1000_back.value, 1e-8);
 }
 
@@ -1127,24 +1127,24 @@ test "doppler radio equivalency" {
     const v_unit: Unit = comptime us.km.div(si.s);
     const f0: Quantity(f64, us.MHz) = .init(1420.405751768);
     const v_1000: Quantity(f64, v_unit) = .init(1000);
-    const v_1000_f = doppler_radio_equivalency.convert(f64, v_unit, v_1000, us.MHz, .{f0});
+    const v_1000_f = doppler_radio_equivalency.convert(f64, v_unit, &v_1000, us.MHz, .{f0});
     try testing.expectApproxEqAbs(1415.66778817, v_1000_f.value, 1e-8);
     try testing.expectEqual(us.MHz, v_1000_f.getUnit());
-    const v_1000_back = doppler_radio_equivalency.convert(f64, us.MHz, v_1000_f, v_unit, .{f0});
+    const v_1000_back = doppler_radio_equivalency.convert(f64, us.MHz, &v_1000_f, v_unit, .{f0});
     try testing.expectApproxEqRel(1000, v_1000_back.value, 1e-8);
 }
 
 test "magnetic flux field equivalency" {
     const mu_r: Quantity(f64, UNITLESS) = .init(1);
     const H: Quantity(f64, us.Oe) = .init(1);
-    const B_G = magnetic_flux_field_equivalency.convert(f64, us.Oe, H, us.G, .{mu_r});
+    const B_G = magnetic_flux_field_equivalency.convert(f64, us.Oe, &H, us.G, .{mu_r});
     try testing.expectApproxEqAbs(1.0, B_G.value, 1e-8);
-    const H_from_B_G = magnetic_flux_field_equivalency.convert(f64, us.G, B_G, us.Oe, .{mu_r});
+    const H_from_B_G = magnetic_flux_field_equivalency.convert(f64, us.G, &B_G, us.Oe, .{mu_r});
     try testing.expectApproxEqRel(H.value, H_from_B_G.value, 1e-15);
 
-    const B_T = magnetic_flux_field_equivalency.convert(f64, us.Oe, H, us.T, .{mu_r});
+    const B_T = magnetic_flux_field_equivalency.convert(f64, us.Oe, &H, us.T, .{mu_r});
     try testing.expectApproxEqAbs(1e-4, B_T.value, 1e-8);
-    const H_from_B_T = magnetic_flux_field_equivalency.convert(f64, us.T, B_T, us.Oe, .{mu_r});
+    const H_from_B_T = magnetic_flux_field_equivalency.convert(f64, us.T, &B_T, us.Oe, .{mu_r});
     try testing.expectApproxEqRel(H.value, H_from_B_T.value, 1e-15);
 }
 
@@ -1156,9 +1156,9 @@ test "brightness temperature equivalency" {
     const jy_q: Quantity(f64, us.Jy) = .init(1);
     const jy_sr_q = jy_q.div(wb).to(us.Jy.div(si.sr));
     const nu: Quantity(f64, us.GHz) = .init(5);
-    const as_K = brightness_temperature_equivalency.convert(f64, us.Jy.div(si.sr), jy_sr_q, si.K, .{nu});
+    const as_K = brightness_temperature_equivalency.convert(f64, us.Jy.div(si.sr), &jy_sr_q, si.K, .{nu});
     try testing.expectApproxEqAbs(3.52629392, as_K.value, 1e-8);
-    const jy_sr_back = brightness_temperature_equivalency.convert(f64, si.K, as_K, us.Jy.div(si.sr), .{nu});
+    const jy_sr_back = brightness_temperature_equivalency.convert(f64, si.K, &as_K, us.Jy.div(si.sr), .{nu});
     try testing.expectApproxEqRel(jy_sr_q.value, jy_sr_back.value, 1e-15);
 
     // VLA
@@ -1167,18 +1167,18 @@ test "brightness temperature equivalency" {
     const fwhm_to_sig: Quantity(f64, UNITLESS) = .init(1.0 / @sqrt(8.0 * @log(2.0)));
     const wb_2: Quantity(f64, si.sr) = fwhm_to_sig.pow(2).mul(bmin).mul(bmaj).mulValue(2 * std.math.pi).to(si.sr);
     const jans: Quantity(f64, us.Jy) = .init(1);
-    const as_K_2 = brightness_temperature_equivalency.convert(f64, us.Jy, jans, si.K, .{ nu, wb_2 });
+    const as_K_2 = brightness_temperature_equivalency.convert(f64, us.Jy, &jans, si.K, .{ nu, wb_2 });
     try testing.expectApproxEqAbs(217.26583888, as_K_2.value, 1e-8);
-    const jans_back = brightness_temperature_equivalency.convert(f64, si.K, as_K_2, us.Jy, .{ nu, wb_2 });
+    const jans_back = brightness_temperature_equivalency.convert(f64, si.K, &as_K_2, us.Jy, .{ nu, wb_2 });
     try testing.expectApproxEqRel(jans.value, jans_back.value, 1e-15);
 }
 
 test "plate scale equivalency" {
     const angle: Quantity(f64, si.arcsec) = .init(1);
     const plate_scale: Quantity(f64, si.m.div(si.rad)) = .init(10);
-    const as_length = plate_scale_equivalency.convert(f64, si.arcsec, angle, si.m, .{plate_scale});
+    const as_length = plate_scale_equivalency.convert(f64, si.arcsec, &angle, si.m, .{plate_scale});
     try testing.expectApproxEqAbs(4.84813681e-05, as_length.value, 1e-8);
-    const angle_back = plate_scale_equivalency.convert(f64, si.m, as_length, si.arcsec, .{plate_scale});
+    const angle_back = plate_scale_equivalency.convert(f64, si.m, &as_length, si.arcsec, .{plate_scale});
     try testing.expectApproxEqRel(angle.value, angle_back.value, 1e-15);
 }
 
@@ -1186,17 +1186,17 @@ test "pixel scale equivalency" {
     {
         const pixscale: Quantity(f64, si.arcsec.div(misc.pix)) = .init(0.4);
         const pix: Quantity(f64, misc.pix) = .init(240);
-        const as_angle = pixel_scale_equivalency.convert(f64, misc.pix, pix, si.arcmin, .{pixscale});
+        const as_angle = pixel_scale_equivalency.convert(f64, misc.pix, &pix, si.arcmin, .{pixscale});
         try testing.expectApproxEqAbs(1.6, as_angle.value, 1e-8);
-        const pix_back = pixel_scale_equivalency.convert(f64, si.arcmin, as_angle, misc.pix, .{pixscale});
+        const pix_back = pixel_scale_equivalency.convert(f64, si.arcmin, &as_angle, misc.pix, .{pixscale});
         try testing.expectApproxEqRel(240, pix_back.value, 1e-15);
     }
     {
         const pixscale: Quantity(f64, misc.pix.div(us.cm)) = .init(100);
         const pix: Quantity(f64, misc.pix) = .init(1024);
-        const as_cm = pixel_scale_equivalency.convert(f64, misc.pix, pix, si.cm, .{pixscale});
+        const as_cm = pixel_scale_equivalency.convert(f64, misc.pix, &pix, si.cm, .{pixscale});
         try testing.expectApproxEqAbs(10.24, as_cm.value, 1e-8);
-        const pix_back = pixel_scale_equivalency.convert(f64, si.cm, as_cm, misc.pix, .{pixscale});
+        const pix_back = pixel_scale_equivalency.convert(f64, si.cm, &as_cm, misc.pix, .{pixscale});
         try testing.expectApproxEqRel(pix.value, pix_back.value, 1e-15);
     }
 }
@@ -1207,33 +1207,33 @@ test "spectral density equivalency" {
     // Flux
     {
         const f: Quantity(f64, us.Jy) = .init(1.5);
-        const as_nuFnu = spe.convert(f64, us.Jy, f, si.W.div(si.m.pow(2)), .{nu_w});
+        const as_nuFnu = spe.convert(f64, us.Jy, &f, si.W.div(si.m.pow(2)), .{nu_w});
         try testing.expectApproxEqRel(1.28482482e-11, as_nuFnu.value, 1e-8);
-        const f_back = spe.convert(f64, si.W.div(si.m.pow(2)), as_nuFnu, us.Jy, .{nu_w});
+        const f_back = spe.convert(f64, si.W.div(si.m.pow(2)), &as_nuFnu, us.Jy, .{nu_w});
         try testing.expectApproxEqRel(f.value, f_back.value, 1e-15);
     }
     // Luminosity density
     {
         const L: Quantity(f64, si.W.div(si.Hz)) = .init(1.5);
-        const as_pow = spe.convert(f64, si.W.div(si.Hz), L, si.W, .{nu_w});
+        const as_pow = spe.convert(f64, si.W.div(si.Hz), &L, si.W, .{nu_w});
         try testing.expectApproxEqRel(1.28482482e+15, as_pow.value, 1e-8);
-        const L_back = spe.convert(f64, si.W, as_pow, si.W.div(si.Hz), .{nu_w});
+        const L_back = spe.convert(f64, si.W, &as_pow, si.W.div(si.Hz), .{nu_w});
         try testing.expectApproxEqRel(L.value, L_back.value, 1e-15);
     }
     // Surface brightness
     {
         const sb: Quantity(f64, spe.Snu) = .init(1.5);
-        const as_nuSnu = spe.convert(f64, spe.Snu, sb, spe.nuSnu, .{nu_w});
+        const as_nuSnu = spe.convert(f64, spe.Snu, &sb, spe.nuSnu, .{nu_w});
         try testing.expectApproxEqRel(1.28482482e+15, as_nuSnu.value, 1e-8);
-        const sb_back = spe.convert(f64, spe.nuSnu, as_nuSnu, spe.Snu, .{nu_w});
+        const sb_back = spe.convert(f64, spe.nuSnu, &as_nuSnu, spe.Snu, .{nu_w});
         try testing.expectApproxEqRel(sb.value, sb_back.value, 1e-15);
     }
     // Luminosity surface brightness
     {
         const lsb: Quantity(f64, spe.SLnu) = .init(1.5);
-        const as_SLlamb = spe.convert(f64, spe.SLnu, lsb, spe.SLlamb, .{nu_w});
+        const as_SLlamb = spe.convert(f64, spe.SLnu, &lsb, spe.SLlamb, .{nu_w});
         try testing.expectApproxEqRel(3.67092806e+21, as_SLlamb.value, 1e-8);
-        const lsb_back = spe.convert(f64, spe.SLlamb, as_SLlamb, spe.SLnu, .{nu_w});
+        const lsb_back = spe.convert(f64, spe.SLlamb, &as_SLlamb, spe.SLnu, .{nu_w});
         try testing.expectApproxEqRel(lsb.value, lsb_back.value, 1e-15);
     }
 }

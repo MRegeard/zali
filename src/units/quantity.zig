@@ -99,7 +99,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             return @TypeOf(self.*).unit;
         }
 
-        pub fn add(self: Self, other: Self) Self {
+        pub fn add(self: *const Self, other: Self) Self {
             switch (inner_type) {
                 .scalar, .vector => {
                     return Quantity(T, U).init(self.value + other.value);
@@ -135,7 +135,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn addInto(self: Self, other: Self, out: *Self) void {
+        pub fn addInto(self: *const Self, other: Self, out: *Self) void {
             switch (inner_type) {
                 .slice => {
                     for (self.value, other.value, out.value) |s, o, *buf| {
@@ -148,7 +148,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn addValue(self: Self, val: T) Self {
+        pub fn addValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, U) = .init(val);
             return self.add(quantity_val);
         }
@@ -158,12 +158,12 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             self.addInPlace(quantity_val);
         }
 
-        pub fn addValueInto(self: Self, val: T, out: *Self) void {
+        pub fn addValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.addInto(quantity_val, out);
         }
 
-        pub fn sub(self: Self, other: Self) Self {
+        pub fn sub(self: *const Self, other: Self) Self {
             switch (inner_type) {
                 .scalar, .vector => {
                     return Quantity(T, U).init(self.value - other.value);
@@ -197,7 +197,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn subInto(self: Self, other: Self, out: *Self) void {
+        pub fn subInto(self: *const Self, other: Self, out: *Self) void {
             switch (inner_type) {
                 .slice => {
                     for (self.value, other.value, out.value) |s, o, *buf| {
@@ -210,7 +210,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn subValue(self: Self, val: T) Self {
+        pub fn subValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, U) = .init(val);
             return self.sub(quantity_val);
         }
@@ -220,12 +220,12 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             self.subInPlace(quantity_val);
         }
 
-        pub fn subValueInto(self: Self, val: T, out: *Self) void {
+        pub fn subValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, U) = .init(val);
             self.subInto(quantity_val, out);
         }
 
-        pub fn mul(self: Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
+        pub fn mul(self: *const Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
                 utils.assertIsQuantity(OtherType);
@@ -247,7 +247,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn mulInto(self: Self, other: anytype, out: *Quantity(T, U.mul(@TypeOf(other).unit))) void {
+        pub fn mulInto(self: *const Self, other: anytype, out: *Quantity(T, U.mul(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
                 utils.assertIsQuantity(OtherType);
@@ -268,7 +268,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn mulValue(self: Self, val: T) Self {
+        pub fn mulValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             return self.mul(quantity_val);
         }
@@ -289,12 +289,12 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn mulValueInto(self: Self, val: T, out: *Self) void {
+        pub fn mulValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             self.mulInto(quantity_val, out);
         }
 
-        pub fn div(self: Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
+        pub fn div(self: *const Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
                 utils.assertIsQuantity(OtherType);
@@ -316,7 +316,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn divInto(self: Self, other: anytype, out: *Quantity(T, U.div(@TypeOf(other).unit))) void {
+        pub fn divInto(self: *const Self, other: anytype, out: *Quantity(T, U.div(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
                 utils.assertIsQuantity(OtherType);
@@ -337,7 +337,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn divValue(self: Self, val: T) Self {
+        pub fn divValue(self: *const Self, val: T) Self {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             return self.div(quantity_val);
         }
@@ -353,12 +353,12 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn divValueInto(self: Self, val: T, out: *Self) void {
+        pub fn divValueInto(self: *const Self, val: T, out: *Self) void {
             const quantity_val: Quantity(T, unitMod.UNITLESS) = .init(val);
             self.divInto(quantity_val, out);
         }
 
-        pub fn pow(self: Self, comptime value: isize) Quantity(T, U.pow(value)) {
+        pub fn pow(self: *const Self, comptime value: isize) Quantity(T, U.pow(value)) {
             switch (inner_type) {
                 .scalar => return .init(math.pow(T, self.value, value)),
                 .vector => {
@@ -385,7 +385,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
-        pub fn powInto(self: Self, comptime value: isize, out: *Quantity(T, U.pow(value))) void {
+        pub fn powInto(self: *const Self, comptime value: isize, out: *Quantity(T, U.pow(value))) void {
             switch (inner_type) {
                 .slice => {
                     const scalar_type: type = @typeInfo(T).pointer.child;
@@ -408,7 +408,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             @panic("Square root of zero encounter");
         }
 
-        pub fn sqrt(self: Self) Quantity(T, U.sqrt()) {
+        pub fn sqrt(self: *const Self) Quantity(T, U.sqrt()) {
             switch (inner_type) {
                 .scalar => {
                     if (checkSqrtPanic(self.value)) return .init(@sqrt(self.value));
@@ -431,7 +431,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
-        pub fn sqrtInto(self: Self, out: *Quantity(T, U.sqrt())) void {
+        pub fn sqrtInto(self: *const Self, out: *Quantity(T, U.sqrt())) void {
             switch (inner_type) {
                 .slice => {
                     for (self.value, out.value) |s, *buf| {
@@ -451,7 +451,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             @panic("Cube root of zero encounter");
         }
 
-        pub fn cbrt(self: Self) Quantity(T, U.cbrt()) {
+        pub fn cbrt(self: *const Self) Quantity(T, U.cbrt()) {
             switch (inner_type) {
                 .scalar => {
                     if (checkCbrtPanic(self.value)) return .init(math.cbrt(self.value));
@@ -482,7 +482,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             unreachable;
         }
 
-        pub fn cbrtInto(self: Self, out: *Quantity(T, U.cbrt())) void {
+        pub fn cbrtInto(self: *const Self, out: *Quantity(T, U.cbrt())) void {
             switch (inner_type) {
                 .slice => {
                     for (self.value, out.value) |s, *buf| {
@@ -502,9 +502,9 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn reduce(self: Self, comptime op: std.builtin.ReduceOp) Quantity(getInnerTypeScalarType(T), U) {
+        pub fn reduce(self: *const Self, comptime op: std.builtin.ReduceOp) Quantity(getInnerTypeScalarType(T), U) {
             switch (inner_type) {
-                .scalar => return self,
+                .scalar => return self.*,
                 .vector => return .init(@reduce(op, self.value)),
                 else => {
                     const scalar_type: type = getInnerTypeScalarType(T);
@@ -545,7 +545,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn dot(self: Self, other: anytype) Quantity(getInnerTypeScalarType(T), U.mul(@TypeOf(other).unit)) {
+        pub fn dot(self: *const Self, other: anytype) Quantity(getInnerTypeScalarType(T), U.mul(@TypeOf(other).unit)) {
             switch (inner_type) {
                 .scalar => return self.mul(other),
                 .vector, .array => return self.mul(other).reduce(.Add),
@@ -559,7 +559,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn to(self: Self, comptime unit_type: Unit) Quantity(T, unit_type) {
+        pub fn to(self: *const Self, comptime unit_type: Unit) Quantity(T, unit_type) {
             if (comptime !U.dim.eql(unit_type.dim)) {
                 @compileError("Units are not compatible.");
             }
@@ -610,11 +610,11 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn toWithEquivalency(self: Self, comptime unit_type: Unit, comptime equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
+        pub fn toWithEquivalency(self: *const Self, comptime unit_type: Unit, comptime equivalency: Equivalency, args: anytype) Quantity(T, unit_type) {
             return equivalency.convert(T, U, self, unit_type, args);
         }
 
-        pub fn toInto(self: Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) void {
+        pub fn toInto(self: *const Self, comptime unit_type: Unit, out: *Quantity(T, unit_type)) void {
             if (comptime !U.dim.eql(unit_type.dim)) {
                 @compileError("Units are not compatible.");
             }
@@ -641,7 +641,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn decompose(self: Self, comptime system: System) Quantity(T, U.decompose(system)) {
+        pub fn decompose(self: *const Self, comptime system: System) Quantity(T, U.decompose(system)) {
             switch (inner_type) {
                 .scalar, .vector => return .init(self.value * U.scale),
                 .array => {
@@ -655,7 +655,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
             }
         }
 
-        pub fn decomposeInto(self: Self, comptime system: System, out: *Quantity(T, U.decompose(system))) void {
+        pub fn decomposeInto(self: *const Self, comptime system: System, out: *Quantity(T, U.decompose(system))) void {
             for (self.value, out.value) |s, *buf| {
                 buf.* = s * U.scale;
             }
