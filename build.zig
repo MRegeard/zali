@@ -28,6 +28,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimizeOption,
     });
 
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = "zali",
+        .root_module = module,
+    });
+    b.installArtifact(lib);
+
     const tests = b.addTest(.{
         .root_module = module,
     });
@@ -154,13 +161,6 @@ pub fn build(b: *std.Build) void {
 
     // Docs
     {
-        const lib = b.addLibrary(.{
-            .linkage = .static,
-            .name = "zali",
-            .root_module = module,
-        });
-        b.installArtifact(lib);
-
         const install_docs = b.addInstallDirectory(.{
             .source_dir = lib.getEmittedDocs(),
             .install_dir = .prefix,
