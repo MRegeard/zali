@@ -231,8 +231,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn addScalar(self: *const Self, other: anytype) Self {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -260,8 +259,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn addScalarInPlace(self: *Self, other: anytype) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -290,8 +288,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn addScalarInto(self: *const Self, other: anytype, out: *Self) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -399,8 +396,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn subScalar(self: *const Self, other: anytype) Self {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -428,8 +424,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn subScalarInPlace(self: *Self, other: anytype) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -456,8 +451,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn subScalarInto(self: *const Self, other: anytype, out: *Self) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -573,8 +567,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn mulScalar(self: *const Self, other: anytype) Quantity(T, U.mul(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -599,8 +592,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn mulScalarInto(self: *const Self, other: anytype, out: *Quantity(T, U.mul(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -728,8 +720,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn divScalar(self: *const Self, other: anytype) Quantity(T, U.div(@TypeOf(other).unit)) {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -754,8 +745,7 @@ pub fn Quantity(comptime T: type, comptime U: Unit) type {
         pub fn divScalarInto(self: *const Self, other: anytype, out: *Quantity(T, U.div(@TypeOf(other).unit))) void {
             comptime {
                 const OtherType = @TypeOf(other);
-                utils.assertIsQuantity(OtherType);
-                assertScalarQuantity(OtherType);
+                utils.assertIsScalarQuantity(OtherType);
             }
             const other_value_float: getInnerTypeScalarType(T) = @floatCast(other.value);
             switch (inner_type) {
@@ -1868,12 +1858,14 @@ test "neg methods" {
     try zatest.expectApproxEqAbsIter(@constCast(&[3]f64{ -7, 8, -9 }), q4n.value, 1e-15);
     try testing.expectEqual(si.Hz, q4n.getUnit());
 
-    var q5: Quantity([]f64, si.Hz) = .init(@constCast(&[3]f64{ 7, -8, 9 }));
+    var buf5: [3]f64 = .{ 7, -8, 9 };
+    var q5: Quantity([]f64, si.Hz) = .init(&buf5);
     q5.negInPlace();
     try zatest.expectApproxEqAbsIter(@constCast(&[3]f64{ -7, 8, -9 }), q5.value, 1e-15);
 
     // negInto aliasing: self === out should still be correct (element-wise)
-    var q6: Quantity([]f64, si.Hz) = .init(@constCast(&[2]f64{ 1, -2 }));
+    var buf6: [2]f64 = .{ 1, -2 };
+    var q6: Quantity([]f64, si.Hz) = .init(&buf6);
     q6.negInto(&q6);
     try zatest.expectApproxEqAbsIter(@constCast(&[2]f64{ -1, 2 }), q6.value, 1e-15);
 }
@@ -1921,7 +1913,7 @@ test "toWithEquivalency" {
     try zatest.expectApproxEqAbsIter(exp, val, 1e-15);
 
     // array
-    const rest_freq: Quantity([3]f64, us.GHz) = .initScalarValue(1.420405751768);
+    const rest_freq: Quantity(f64, us.GHz) = .init(1.420405751768);
     const velocities: [3]f64 = .{ 0.0, 1000.0, -1000.0 };
     const freq_arr: Quantity([3]f64, us.km.div(si.s)) = .init(velocities);
     const as_freq = freq_arr.toWithEquivalency(us.GHz, .doppler_radio, .{rest_freq});
