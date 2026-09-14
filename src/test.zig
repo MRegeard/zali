@@ -1,8 +1,11 @@
 const std = @import("std");
 
-pub inline fn expectApproxEqAbsIter(expected: anytype, actual: anytype, tolerance: anytype) ! void {
-    @setEvalBranchQuota(5000);
-    inline for (0..expected.len) |i| {
-        try std.testing.expectApproxEqAbs(expected[i], actual[i], tolerance);
-    }
+pub fn expectApproxEqAbsIter(expected: anytype, actual: anytype, tolerance: anytype) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |e, a| try std.testing.expectApproxEqAbs(e, a, tolerance);
+}
+
+pub fn expectApproxEqRelIter(expected: anytype, actual: anytype, tolerance: anytype) !void {
+    try std.testing.expectEqual(expected.len, actual.len);
+    for (expected, actual) |e, a| try std.testing.expectApproxEqRel(e, a, tolerance);
 }
