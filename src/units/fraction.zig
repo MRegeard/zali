@@ -4,12 +4,16 @@ const math = std.math;
 const debug = std.debug;
 
 /// Errors that fraction arithmetic can produce.
-/// - `Overflow`: an intermediate numerator or denominator exceeded the range of `T`.
+/// - `Overflow`: an intermediate numerator or denominator exceeded the higher bound of `T`.
+/// - `Underflow`: an intermediate numerator or denominator exceeded the lower bound of `T`.
 /// - `ZeroDenominator`: a zero denominator was supplied or would result.
+/// - `DivisionByZero`: a division by zero occured.
 /// - `ImpossibleConversionToInt`: a non-integer fraction was asked to convert to an integer.
 pub const FractionError = error{
     Overflow,
+    Underflow,
     ZeroDenominator,
+    DivisionByZero,
     ImpossibleConversionToInt,
 };
 
@@ -45,18 +49,20 @@ pub fn Fraction(comptime T: type) type {
 
         pub const Error = FractionError;
 
-        /// Constructs a reduced fraction `num/denum`. Returns `ZeroDenominator` if
+        /// Constructs a reduced fraction `num/denum`. Returns `error.ZeroDenominator` if
         /// `denum` is zero. The result is always normalized to lowest terms.
+        /// Rejects `num` or `denum` with value `std.math.minInt(T)` returning an `error.Overflow`
+        /// since `-std.math.minInt(T)` will overflow.
         pub fn init(num: T, denum: T) Error!Self {
+            if (num == math.minInt(T) or denum == math.minInt(T)) return error.Overflow;
             if (denum == 0) return Error.ZeroDenominator;
-            if (num < 0 and denum < 0) {
-                return (Self{ .num = num, .denum = denum }).reduce();
-            }
             return (Self{ .num = num, .denum = denum }).reduce();
         }
 
         /// Constructs a whole-number fraction `value/1`. Cannot fail.
+        /// Throw a compile error or panic if `value` is `math.minInt(T)`.
         pub fn initInt(value: T) Self {
+            debug.assert(value != math.minInt(T));
             return .{ .num = value, .denum = 1 };
         }
 
@@ -86,6 +92,8 @@ pub fn Fraction(comptime T: type) type {
                 return frac;
             }
 
+            if (frac.denum == 1) return frac;
+
             const g = math.gcd(@abs(frac.num), @abs(frac.denum));
             const gT: T = @intCast(g);
             frac.num = @divExact(frac.num, gT);
@@ -105,6 +113,8 @@ pub fn Fraction(comptime T: type) type {
                 return;
             }
 
+            if (self.denum == 1) return;
+
             const g = math.gcd(@abs(self.num), @abs(self.denum));
             const gT: T = @intCast(g);
             self.num = @divExact(self.num, gT);
@@ -114,36 +124,40 @@ pub fn Fraction(comptime T: type) type {
         // Addition with overflow detection, surfaced as `Error.Overflow`.
         fn addChecked(a: T, b: T) Error!T {
             const result = @addWithOverflow(a, b);
-            if (result[1] != 0) return Error.Overflow;
+            if (result[1] != 0 or result[0] == math.minInt(T)) return Error.Overflow;
             return result[0];
         }
 
         // Multiplication with overflow detection, surfaced as `Error.Overflow`.
         fn mulChecked(a: T, b: T) Error!T {
             const result = @mulWithOverflow(a, b);
-            if (result[1] != 0) return Error.Overflow;
+            if (result[1] != 0 or result[0] == math.minInt(T)) return Error.Overflow;
             return result[0];
         }
 
-        /// Adds two fractions via cross-multiplication, returning the reduced sum.
+        /// Adds two fractions via lcm, returning the reduced sum.
         /// Returns `Error.Overflow` if an intermediate product or sum overflows `T`.
+        // a/b + c/d = (a.(d/g) + c.(b/g)) / (b.(d/g)), where g = gcd(b, d)
+        // to avoid overflow.
         pub fn add(self: Self, other: Self) Error!Self {
-            const num1 = try mulChecked(self.num, other.denum);
-            const num2 = try mulChecked(other.num, self.denum);
-            const denum = try mulChecked(self.denum, other.denum);
-            const num = try addChecked(num1, num2);
+            // Fast path when both fractions are integer
+            if (self.denum == 1 and other.denum == 1) {
+                return .{ .num = try addChecked(self.num, other.num), .denum = 1 };
+            }
+
+            const a = self.reduce();
+            const b = other.reduce();
+            const g: T = @intCast(math.gcd(@abs(a.denum), @abs(b.denum)));
+            const a_factor = @divExact(b.denum, g);
+            const b_factor = @divExact(a.denum, g);
+            const num = try addChecked(try mulChecked(a.num, a_factor), try mulChecked(b.num, b_factor));
+            const denum = try mulChecked(a.denum, a_factor);
             return Self.initUncheckedReduce(num, denum);
         }
 
         /// In-place variant of `add`.
         pub fn addInPlace(self: *Self, other: Self) Error!void {
-            const num1 = try mulChecked(self.num, other.denum);
-            const num2 = try mulChecked(other.num, self.denum);
-            const denum = try mulChecked(self.denum, other.denum);
-            const num = try addChecked(num1, num2);
-            self.num = num;
-            self.denum = denum;
-            self.reduceInPlace();
+            self.* = try self.add(other);
         }
 
         /// Adds a whole integer to the fraction.
@@ -194,16 +208,16 @@ pub fn Fraction(comptime T: type) type {
         }
 
         /// Returns the reciprocal `denum/num`, keeping the sign on the numerator.
-        /// Returns `ZeroDenominator` if the fraction is zero.
+        /// Returns `DivisionByZero` if the fraction is zero.
         pub fn inv(self: Self) Error!Self {
-            if (self.num == 0) return Error.ZeroDenominator;
+            if (self.num == 0) return Error.DivisionByZero;
             if (self.num < 0) return Self.initUncheckedReduce(-self.denum, -self.num);
             return Self.initUncheckedReduce(self.denum, self.num);
         }
 
         /// In-place variant of `inv`.
         pub fn invInPlace(self: *Self) Error!void {
-            if (self.num == 0) return Error.ZeroDenominator;
+            if (self.num == 0) return Error.DivisionByZero;
             if (self.num < 0) {
                 self.num = -self.num;
                 self.denum = -self.denum;
@@ -224,8 +238,10 @@ pub fn Fraction(comptime T: type) type {
 
         /// In-place variant of `mul`.
         pub fn mulInPlace(self: *Self, other: Self) Error!void {
-            self.num = try mulChecked(self.num, other.num);
-            self.denum = try mulChecked(self.denum, other.denum);
+            const num = try mulChecked(self.num, other.num);
+            const denum = try mulChecked(self.denum, other.denum);
+            self.num = num;
+            self.denum = denum;
             self.reduceInPlace();
         }
 
@@ -242,7 +258,7 @@ pub fn Fraction(comptime T: type) type {
         }
 
         /// Divides `self` by `other` (implemented as `self * other⁻¹`). Returns
-        /// `ZeroDenominator` if `other` is zero.
+        /// `DivisionByZero` if `other` is zero.
         pub fn div(self: Self, other: Self) Error!Self {
             return try self.mul(try other.inv());
         }
@@ -287,9 +303,8 @@ pub fn Fraction(comptime T: type) type {
         /// absolute numerator/denominator, so it works regardless of how the sign is
         /// distributed between numerator and denominator.
         pub fn eql(self: Self, other: Self) bool {
-            return (self.sign() == other.sign()) and
-                (@abs(self.num) == @abs(other.num)) and
-                (@abs(self.denum) == @abs(other.denum));
+            const W = std.meta.Int(.signed, 2 * @typeInfo(T).int.bits);
+            return @as(W, self.num) * @as(W, other.denum) == @as(W, other.num) * @as(W, self.denum);
         }
 
         /// Returns the absolute value of the fraction.
@@ -315,18 +330,53 @@ pub fn Fraction(comptime T: type) type {
         /// `ImpossibleConversionToInt` if the fraction is not a whole number.
         pub fn toInt(self: Self, comptime int_type: type) Error!int_type {
             if (self.isInt()) {
-                const res: int_type = @intCast(self.reduce().num);
+                const res: int_type = math.cast(int_type, self.reduce().num) orelse return Error.Overflow;
                 return res;
             } else {
                 return Error.ImpossibleConversionToInt;
             }
         }
 
+        /// Given two fractions, return the order they are with respect to each other.
+        pub fn order(self: Self, other: Self) math.Order {
+            const W = std.meta.Int(.signed, 2 * @typeInfo(T).int.bits);
+            const a = self.reduce();
+            const b = other.reduce();
+            return math.order(@as(W, a.num) * @as(W, b.denum), @as(W, b.num) * @as(W, a.denum));
+        }
+
+        /// Check whether the given fraction is equal to 0.
+        pub fn isZero(self: Self) bool {
+            return self.num == 0;
+        }
+
+        /// Check whether the given fraction is equal to 1.
+        pub fn isOne(self: Self) bool {
+            const f = self.reduce();
+            return f.num == f.denum;
+        }
+
+        /// Integer power of a fraction.
+        pub fn pow(self: Self, n: T) Error!Self {
+            if (n == math.minInt(T)) return Error.Overflow;
+            const base = if (n < 0) try self.inv() else self;
+            const e = if (n < 0) -n else n;
+            const num = try math.powi(T, base.num, e);
+            const denum = try math.powi(T, base.denum, e);
+            if (num == math.minInt(T) or denum == math.minInt(T)) return Error.Overflow;
+            return Self.initUncheckedReduce(num, denum);
+        }
+
+        /// In place variant of the power of the fraction.
+        pub fn powInPlace(self: *Self, n: T) Error!void {
+            self.* = try self.pow(n);
+        }
+
         /// `std.fmt` formatting hook. Prints a whole number as just the integer
         /// (e.g. `2`), and a proper fraction as `num/denum` (e.g. `3/2`).
         pub fn format(self: Self, writer: *std.Io.Writer) std.Io.Writer.Error!void {
             const frac = self.reduce();
-            if (self.isInt()) {
+            if (frac.denum == 1) {
                 try writer.print("{d}", .{frac.num});
             } else {
                 try writer.print("{d}/{d}", .{ frac.num, frac.denum });
@@ -674,7 +724,7 @@ test "toInt" {
     // _ = try fracOverload.toInt(u16);
 }
 
-test "fromat" {
+test "format" {
     var buf: [8]u8 = undefined;
     const frac = try Fraci32.init(4, 2);
     const print_res = try std.fmt.bufPrint(&buf, "{f}", .{frac});
@@ -683,4 +733,38 @@ test "fromat" {
     const frac2 = try Fraci32.init(3, 2);
     const print_res2 = try std.fmt.bufPrint(&buf, "{f}", .{frac2});
     try testing.expectEqualSlices(u8, "3/2", print_res2);
+}
+
+test "order" {
+    {
+        const frac1 = try Fraci32.init(2, 6);
+        const frac2 = try Fraci32.init(4, 12);
+        try testing.expect(frac1.order(frac2) == .eq);
+    }
+    {
+        const frac1 = try Fraci32.init(1, 2);
+        const frac2 = try Fraci32.init(1, 4);
+        try testing.expect(frac1.order(frac2) == .gt);
+    }
+    {
+        const frac1 = try Fraci32.init(1, 3);
+        const frac2 = try Fraci32.init(1, 2);
+        try testing.expect(frac1.order(frac2) == .lt);
+    }
+}
+
+test "isZero" {
+    const frac1 = try Fraci32.init(0, 2);
+    try testing.expect(frac1.isZero());
+
+    const frac2 = try Fraci32.init(2, 3);
+    try testing.expect(!frac2.isZero());
+}
+
+test "isOne" {
+    const frac1 = try Fraci32.init(4, 4);
+    try testing.expect(frac1.isOne());
+
+    const frac2 = try Fraci32.init(2, 4);
+    try testing.expect(!frac2.isOne());
 }
