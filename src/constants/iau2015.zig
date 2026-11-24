@@ -5,14 +5,14 @@ const codata = @import("codata2022.zig");
 const units = @import("../units.zig");
 
 const degToRad = std.math.degreesToRadians;
-const deg_value: f64 = 1.0 / 3600.0;
+const arcsec_in_deg: f64 = 1.0 / 3600.0;
 
 // Distance
 //
 pub const au: Constant(f64, units.m) = .init(1.49597870700e11, "Astronomical Unit", .SI);
-pub const pc: Constant(f64, units.m) = .init(au.quantity.value / degToRad(deg_value), "Parsec", .SI);
-pub const kpc: Constant(f64, units.m) = .init(1000 * au.quantity.value / degToRad(deg_value), "Kiloparsec", .SI);
-pub const L_bol0: Constant(f64, units.W) = .init(3.0128e28, "Luminosoty for absolute bolometric magnetide 0", .SI);
+pub const pc: Constant(f64, units.m) = .init(au.quantity.value / degToRad(arcsec_in_deg), "Parsec", .SI);
+pub const kpc: Constant(f64, units.m) = .init(1000 * pc.quantity.value, "Kiloparsec", .SI);
+pub const L_bol0: Constant(f64, units.W) = .init(3.0128e28, "Luminosity for absolute bolometric magnitude 0", .SI);
 
 // Solar quantities
 //
@@ -25,7 +25,7 @@ pub const R_sun: Constant(f64, units.m) = .init(6.957e8, "Nominal solar radius",
 //
 pub const GM_jup: Constant(f64, units.m.pow(3).div(units.s.pow(2))) = .init(1.2668653e17, "Nominal Jupiter mass parameter", .SI);
 pub const M_jup: Constant(f64, units.kg) = .init(GM_jup.quantity.value / codata.G.quantity.value, "Jupiter mass", .SI);
-pub const R_jup: Constant(f64, units.m) = .init(7.1492e7, "Nominal jupiter equatorial radius", .SI);
+pub const R_jup: Constant(f64, units.m) = .init(7.1492e7, "Nominal Jupiter equatorial radius", .SI);
 
 pub const GM_earth: Constant(f64, units.m.pow(3).div(units.s.pow(2))) = .init(3.986004e14, "Nominal Earth mass parameter", .SI);
 pub const M_earth: Constant(f64, units.kg) = .init(GM_earth.quantity.value / codata.G.quantity.value, "Earth mass", .SI);
