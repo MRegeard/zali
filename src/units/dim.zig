@@ -27,7 +27,7 @@ pub const Exponent = Fraction(ExponentInt);
 /// represented exactly. Two units are dimensionally compatible iff their `Dim`s
 /// are equal.
 ///
-/// Fields, each a `Exponent` exponent:
+/// Fields, each an `Exponent`:
 /// - `l`:  length
 /// - `m`:  mass
 /// - `t`:  time
@@ -93,6 +93,7 @@ pub const Dim = struct {
             (self.a.eql(other.a));
     }
 
+    /// Returns whether the dimension is dimensionless, meaning its of its fields is 0.
     pub fn isDimensionless(self: Self) bool {
         return (self.l.isZero()) and
             (self.m.isZero()) and
@@ -379,6 +380,11 @@ test "negInPlace" {
     try amountTest.negInPlace();
     const invAmountRes: Dim = .initUniqueFieldInt("n", -1);
     try testing.expectEqual(invAmountRes, amountTest);
+}
+
+test "isDimensionless" {
+    try testing.expect(Dim.initDimensionless().isDimensionless());
+    try testing.expect(!length.isDimensionless());
 }
 
 test "format" {
