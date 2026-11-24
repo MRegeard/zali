@@ -3,15 +3,17 @@ const fmt = std.fmt;
 const math = std.math;
 const mem = std.mem;
 const testing = std.testing;
-const dimMod = @import("dim.zig");
-const Dim = dimMod.Dim;
+const dim_mod = @import("dim.zig");
+const Exponent = dim_mod.Exponent;
+const ExponentInt = dim_mod.ExponentInt;
+const Dim = dim_mod.Dim;
 const fraction = @import("fraction.zig");
 const symbolMod = @import("symbol.zig");
 const SymbolExpression = symbolMod.SymbolExpression;
 const SymbolTerm = symbolMod.SymbolTerm;
-const systemMod = @import("system.zig");
-const System = systemMod.System;
-const SystemUnit = systemMod.SystemUnit;
+const system_mod = @import("system.zig");
+const System = system_mod.System;
+const SystemUnit = system_mod.SystemUnit;
 const utils = @import("utils.zig");
 
 const FractionError = fraction.FractionError;
@@ -123,7 +125,7 @@ pub const Unit = struct {
     /// Raises a unit to an integer power: multiplies each dimension exponent by
     /// `value`, raises the scale to that power, and scales the symbol exponents.
     /// Returns `FractionError` on dimension overflow. Affine units cannot be powered.
-    pub fn tryPow(self: Self, value: isize) FractionError!Self {
+    pub fn tryPow(self: Self, value: ExponentInt) FractionError!Self {
         if (self.offset != null) {
             if (@inComptime()) {
                 @compileError("Cannot power affine units (non-zero offset).");
@@ -141,7 +143,7 @@ pub const Unit = struct {
     }
 
     /// Infallible `tryPow`: treats dimension overflow as `unreachable`.
-    pub fn pow(self: Self, value: isize) Self {
+    pub fn pow(self: Self, value: ExponentInt) Self {
         return self.tryPow(value) catch unreachable;
     }
 
@@ -198,7 +200,7 @@ pub const Unit = struct {
     /// exponent by the fraction, raises the scale to the fractional power, and scales
     /// the symbol exponents. Returns `FractionError` on invalid fraction or overflow.
     /// Affine units cannot be powered.
-    pub fn tryPowByFraction(self: Self, num: isize, denum: isize) FractionError!Self {
+    pub fn tryPowByFraction(self: Self, num: ExponentInt, denum: ExponentInt) FractionError!Self {
         if (self.offset != null) {
             if (@inComptime()) {
                 @compileError("Cannot power affine units (non-zero offset).");
@@ -206,7 +208,7 @@ pub const Unit = struct {
                 @panic("Cannot power affine units (non-zero offset).");
             }
         }
-        const frac = try Fraction(isize).init(num, denum);
+        const frac = try Exponent.init(num, denum);
         return .{
             .dim = try self.dim.mulFraction(frac),
             .scale = math.pow(f64, self.scale, frac.toFloat(f64)),
@@ -216,14 +218,14 @@ pub const Unit = struct {
     }
 
     /// Infallible `tryPowByFraction`: treats fraction failure as `unreachable`.
-    pub fn powByFraction(self: Self, num: isize, denum: isize) Self {
+    pub fn powByFraction(self: Self, num: ExponentInt, denum: ExponentInt) Self {
         return self.tryPowByFraction(num, denum) catch unreachable;
     }
 
     /// Like `tryPowByFraction` but takes an already-constructed `Fraction` directly,
     /// avoiding re-validating the numerator/denominator. Returns `FractionError` on
     /// dimension overflow. Affine units cannot be powered.
-    pub fn tryPowByZaliFraction(self: Self, frac: Fraction(isize)) FractionError!Self {
+    pub fn tryPowByZaliFraction(self: Self, frac: Exponent) FractionError!Self {
         if (self.offset != null) {
             if (@inComptime()) {
                 @compileError("Cannot power affine units (non-zero offset).");
@@ -240,7 +242,7 @@ pub const Unit = struct {
     }
 
     /// Infallible `tryPowByZaliFraction`: treats fraction failure as `unreachable`.
-    pub fn powByZaliFraction(self: Self, frac: Fraction(isize)) Self {
+    pub fn powByZaliFraction(self: Self, frac: Exponent) Self {
         return self.tryPowByZaliFraction(frac) catch unreachable;
     }
 
@@ -289,8 +291,8 @@ pub const Unit = struct {
 };
 
 test "test init" {
-    const meter: Unit = .init(dimMod.length, 1.0, try SymbolExpression.initFromString("m"));
-    try testing.expectEqual(dimMod.length, meter.dim);
+    const meter: Unit = .init(dim_mod.length, 1.0, try SymbolExpression.initFromString("m"));
+    try testing.expectEqual(dim_mod.length, meter.dim);
     try testing.expectEqual(1.0, meter.scale);
     try testing.expectEqualSlices(u8, "m", meter.symbol.terms[0].symbol);
     try testing.expect(meter.symbol.terms[0].exponent.eqlScalar(1));
@@ -298,51 +300,51 @@ test "test init" {
 }
 
 test "test init affine" {
-    const degC: Unit = .initAffine(dimMod.temperature, 1.0, 273.15, try SymbolExpression.initFromString("degC"));
-    try testing.expectEqual(dimMod.temperature, degC.dim);
+    const degC: Unit = .initAffine(dim_mod.temperature, 1.0, 273.15, try SymbolExpression.initFromString("degC"));
+    try testing.expectEqual(dim_mod.temperature, degC.dim);
     try testing.expectEqual(1.0, degC.scale);
     try testing.expectEqualSlices(u8, "degC", degC.symbol.terms[0].symbol);
     try testing.expectEqual(273.15, degC.offset);
 }
 
 test "test multiply units" {
-    const meter1: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
-    const meter2: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
+    const meter1: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
+    const meter2: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
     const meter_square = try meter1.tryMul(meter2);
     try testing.expectEqual(1.0, meter_square.scale);
     try testing.expectEqual(null, meter_square.offset);
     try testing.expectEqual(1, meter_square.symbol.len);
     try testing.expectEqualSlices(u8, "m", meter_square.symbol.terms[0].symbol);
     try testing.expect(meter_square.symbol.terms[0].exponent.eqlScalar(2));
-    try testing.expectEqual(try dimMod.length.add(dimMod.length), meter_square.dim);
+    try testing.expectEqual(try dim_mod.length.add(dim_mod.length), meter_square.dim);
 }
 
 test "test divid units" {
-    const meter: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
-    const centimeter: Unit = .init(dimMod.length, 0.01, try SymbolExpression.initFromString("cm"));
+    const meter: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
+    const centimeter: Unit = .init(dim_mod.length, 0.01, try SymbolExpression.initFromString("cm"));
     const meter_centimeter = try meter.tryDiv(centimeter);
     try testing.expectEqual(100, meter_centimeter.scale);
     try testing.expectEqual(null, meter_centimeter.offset);
     try testing.expectEqual(2, meter_centimeter.symbol.len);
     try testing.expect(meter_centimeter.symbol.terms[1].exponent.eqlScalar(-1));
     try testing.expectEqualSlices(u8, "m", meter_centimeter.symbol.terms[0].symbol);
-    try testing.expectEqual(try dimMod.length.sub(dimMod.length), meter_centimeter.dim);
+    try testing.expectEqual(try dim_mod.length.sub(dim_mod.length), meter_centimeter.dim);
 }
 
 test "pow" {
-    const cm: Unit = .init(dimMod.length, 0.01, try SymbolExpression.initFromString("cm"));
+    const cm: Unit = .init(dim_mod.length, 0.01, try SymbolExpression.initFromString("cm"));
     const cm_cube = try cm.tryPow(3);
     try testing.expect(math.approxEqAbs(f64, 1e-6, cm_cube.scale, 1e-15));
     try testing.expectEqual(null, cm_cube.offset);
-    try testing.expectEqual(try dimMod.length.add(try dimMod.length.add(dimMod.length)), cm_cube.dim);
+    try testing.expectEqual(try dim_mod.length.add(try dim_mod.length.add(dim_mod.length)), cm_cube.dim);
     try testing.expectEqual(1, cm_cube.symbol.len);
     try testing.expect(cm_cube.symbol.terms[0].exponent.eqlScalar(3));
     try testing.expectEqualSlices(u8, "cm", cm_cube.symbol.terms[0].symbol);
 }
 
 test "sqrt" {
-    const m2: Unit = .init(try dimMod.length.add(dimMod.length), 1, try SymbolExpression.initFromString("m2"));
-    const m: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
+    const m2: Unit = .init(try dim_mod.length.add(dim_mod.length), 1, try SymbolExpression.initFromString("m2"));
+    const m: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
     const m2sqrt = try m2.trySqrt();
     try testing.expect(math.approxEqAbs(f64, m.scale, m2sqrt.scale, 1e-15));
     try testing.expectEqual(null, m2sqrt.offset);
@@ -353,8 +355,8 @@ test "sqrt" {
 }
 
 test "cbrt" {
-    const m3: Unit = .init(try dimMod.length.mulScalar(3), 1, try SymbolExpression.initFromString("m3"));
-    const m: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
+    const m3: Unit = .init(try dim_mod.length.mulScalar(3), 1, try SymbolExpression.initFromString("m3"));
+    const m: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
     const m3cbrt = try m3.tryCbrt();
     try testing.expect(math.approxEqAbs(f64, m.scale, m3cbrt.scale, 1e-15));
     try testing.expectEqual(null, m3cbrt.offset);
@@ -365,8 +367,8 @@ test "cbrt" {
 }
 
 test "powByFraction" {
-    const m4: Unit = .init(try dimMod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
-    const m: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
+    const m4: Unit = .init(try dim_mod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
+    const m: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
     const m4PowByFrac = try m4.tryPowByFraction(1, 4);
     try testing.expect(math.approxEqAbs(f64, m.scale, m4PowByFrac.scale, 1e-15));
     try testing.expectEqual(null, m4PowByFrac.offset);
@@ -377,9 +379,9 @@ test "powByFraction" {
 }
 
 test "powByZaliFraction" {
-    const frac = try Fraction(isize).init(1, 4);
-    const m4: Unit = .init(try dimMod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
-    const m: Unit = .init(dimMod.length, 1, try SymbolExpression.initFromString("m"));
+    const frac = try Exponent.init(1, 4);
+    const m4: Unit = .init(try dim_mod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
+    const m: Unit = .init(dim_mod.length, 1, try SymbolExpression.initFromString("m"));
     const m4PowByFrac = try m4.tryPowByZaliFraction(frac);
     try testing.expect(math.approxEqAbs(f64, m.scale, m4PowByFrac.scale, 1e-15));
     try testing.expectEqual(null, m4PowByFrac.offset);
@@ -391,7 +393,7 @@ test "powByZaliFraction" {
 
 test "format" {
     const allocator = std.testing.allocator;
-    const m4: Unit = .init(try dimMod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
+    const m4: Unit = .init(try dim_mod.length.mulScalar(4), 1, try SymbolExpression.initFromString("m4"));
     const expected: []const u8 =
         \\Unit:
         \\    dim: l = 4,
@@ -406,14 +408,14 @@ test "format" {
 
 test "decompose" {
     const dimension: Dim = .{
-        .i = Fraction(isize).initInt(0),
-        .j = Fraction(isize).initInt(0),
-        .l = Fraction(isize).initInt(1),
-        .m = Fraction(isize).initInt(1),
-        .n = Fraction(isize).initInt(0),
-        .t = Fraction(isize).initInt(-2),
-        .th = Fraction(isize).initInt(0),
-        .a = Fraction(isize).initInt(0),
+        .i = Exponent.initInt(0),
+        .j = Exponent.initInt(0),
+        .l = Exponent.initInt(1),
+        .m = Exponent.initInt(1),
+        .n = Exponent.initInt(0),
+        .t = Exponent.initInt(-2),
+        .th = Exponent.initInt(0),
+        .a = Exponent.initInt(0),
     };
     const N: Unit = .init(dimension, 1, try SymbolExpression.initFromString("N"));
     const N_decomp = N.decompose(.SI);

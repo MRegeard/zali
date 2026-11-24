@@ -1,6 +1,9 @@
 const std = @import("std");
 const testing = std.testing;
 const Fraction = @import("fraction.zig").Fraction;
+const dim = @import("dim.zig");
+const Exponent = dim.Exponent;
+const ExponentInt = dim.ExponentInt;
 
 /// A single factor in a unit's symbol: a base symbol string raised to a rational
 /// exponent (e.g. `m`, `s-2`, `kg^1/2`). Several of these combine into a
@@ -11,21 +14,21 @@ pub const SymbolTerm = struct {
     /// The base symbol text, e.g. "m", "kg", "Hz".
     symbol: []const u8,
     /// The exponent applied to `symbol`, stored as an exact fraction.
-    exponent: Fraction(isize),
+    exponent: Exponent,
 
     /// Constructs a term with an explicit exponent.
-    pub fn init(symbol: []const u8, exponent: Fraction(isize)) Self {
+    pub fn init(symbol: []const u8, exponent: Exponent) Self {
         return .{ .symbol = symbol, .exponent = exponent };
     }
 
     /// Constructs a term with exponent 1 (the bare symbol).
     pub fn initSymbol(symbol: []const u8) Self {
-        return .init(symbol, Fraction(isize).initInt(1));
+        return .init(symbol, Exponent.initInt(1));
     }
 
     /// Constructs a term with an integer exponent.
-    pub fn initSymbolInt(symbol: []const u8, value: isize) Self {
-        return .init(symbol, Fraction(isize).initInt(value));
+    pub fn initSymbolInt(symbol: []const u8, value: ExponentInt) Self {
+        return .init(symbol, Exponent.initInt(value));
     }
 
     // Parses the exponent portion of a symbol token into a Fraction. Handles the
@@ -33,8 +36,8 @@ pub const SymbolTerm = struct {
     //   "1", "-1", "+1", "1/2", "^1/2", "-1/2", "^-1/2"
     // The integer part before any '/' is the numerator; the part after is the
     // denominator (default 1). The result is reduced before returning.
-    fn parseExponent(string: []const u8) !Fraction(isize) {
-        var result = Fraction(isize).initInt(1);
+    fn parseExponent(string: []const u8) !Exponent {
+        var result = Exponent.initInt(1);
         var str_pos: usize = 0;
         var is_num: bool = true;
         loop: while (str_pos < string.len) {
@@ -48,16 +51,16 @@ pub const SymbolTerm = struct {
                     if (is_num) {
                         const slash_pos = std.mem.indexOfScalarPos(u8, string, str_pos, '/');
                         if (slash_pos) |idx| {
-                            const num: isize = try std.fmt.parseInt(isize, string[str_pos..idx], 10);
+                            const num: ExponentInt = try std.fmt.parseInt(ExponentInt, string[str_pos..idx], 10);
                             result.num = num;
                             str_pos = idx;
                         } else {
-                            const num: isize = try std.fmt.parseInt(isize, string[str_pos..], 10);
+                            const num: ExponentInt = try std.fmt.parseInt(ExponentInt, string[str_pos..], 10);
                             result.num = num;
                             str_pos = string.len;
                         }
                     } else {
-                        const denum = try std.fmt.parseInt(isize, string[str_pos..], 10);
+                        const denum: ExponentInt = try std.fmt.parseInt(ExponentInt, string[str_pos..], 10);
                         std.debug.assert(denum != 0);
                         result.denum = denum;
                         break :loop;
@@ -146,7 +149,7 @@ pub const SymbolExpression = struct {
             if (split_idx == str.len) {
                 terms[term_counter] = SymbolTerm.initSymbol(str[0..split_idx]);
             } else {
-                const exponent: Fraction(isize) = try SymbolTerm.parseExponent(str[split_idx..]);
+                const exponent: Exponent = try SymbolTerm.parseExponent(str[split_idx..]);
                 terms[term_counter] = SymbolTerm.init(str[0..split_idx], exponent);
             }
             term_counter += 1;
@@ -309,14 +312,14 @@ pub const SymbolExpression = struct {
 
     /// In-place: multiplies every term's exponent by `frac` (used when raising the
     /// unit to a rational power).
-    pub fn mulFracInPlace(self: *Self, frac: Fraction(isize)) void {
+    pub fn mulFracInPlace(self: *Self, frac: Exponent) void {
         for (0..self.len) |i| {
             self.terms[i].exponent.mulInPlace(frac) catch unreachable;
         }
     }
 
     /// Returns a copy with every exponent multiplied by `frac`.
-    pub fn mulFrac(self: Self, frac: Fraction(isize)) Self {
+    pub fn mulFrac(self: Self, frac: Exponent) Self {
         var result = self;
         result.mulFracInPlace(frac);
         return result;
@@ -324,14 +327,14 @@ pub const SymbolExpression = struct {
 
     /// In-place: divides every term's exponent by `frac` (used when taking a
     /// rational root of the unit).
-    pub fn divFracInPlace(self: *Self, frac: Fraction(isize)) void {
+    pub fn divFracInPlace(self: *Self, frac: Exponent) void {
         for (0..self.len) |i| {
             self.terms[i].exponent.divInPlace(frac) catch unreachable;
         }
     }
 
     /// Returns a copy with every exponent divided by `frac`.
-    pub fn divFrac(self: Self, frac: Fraction(isize)) Self {
+    pub fn divFrac(self: Self, frac: Exponent) Self {
         var result = self;
         result.divFracInPlace(frac);
         return result;
@@ -339,19 +342,19 @@ pub const SymbolExpression = struct {
 };
 
 test "SymbolTerm init" {
-    const symbol1 = SymbolTerm.init("m", try Fraction(isize).init(1, 2));
+    const symbol1 = SymbolTerm.init("m", try Exponent.init(1, 2));
     const symbol2 = SymbolTerm.initSymbol("s");
     const symbol3 = SymbolTerm.initSymbolInt("kg", -1);
 
     try testing.expectEqual("m", symbol1.symbol);
-    try testing.expectEqual(try Fraction(isize).init(1, 2), symbol1.exponent);
+    try testing.expectEqual(try Exponent.init(1, 2), symbol1.exponent);
     try testing.expect((1 == symbol2.exponent.denum) and (1 == symbol2.exponent.num));
     try testing.expect(symbol3.exponent.eqlScalar(-1));
 }
 
 test "SymbolTerm init comptime" {
     comptime {
-        const symbol = SymbolTerm.init("Hz", try Fraction(isize).init(1, 3));
+        const symbol = SymbolTerm.init("Hz", try Exponent.init(1, 3));
         try testing.expect(3 == symbol.exponent.denum);
     }
 }
@@ -372,36 +375,36 @@ test "SymbolTerm parseExponent" {
     // Case m^-1/2 m^+1/2
 
     // Case m1
-    const exp1: Fraction(isize) = try SymbolTerm.parseExponent("1");
+    const exp1: Exponent = try SymbolTerm.parseExponent("1");
     try testing.expectEqual(1, exp1.num);
     try testing.expectEqual(1, exp1.denum);
 
     // Case m-1
-    const exp2: Fraction(isize) = try SymbolTerm.parseExponent("-1");
+    const exp2: Exponent = try SymbolTerm.parseExponent("-1");
     try testing.expectEqual(-1, exp2.num);
     try testing.expectEqual(1, exp2.denum);
 
-    const exp3: Fraction(isize) = try SymbolTerm.parseExponent("+1");
+    const exp3: Exponent = try SymbolTerm.parseExponent("+1");
     try testing.expectEqual(1, exp3.num);
     try testing.expectEqual(1, exp3.denum);
 
     // Case m1/2
-    const exp4: Fraction(isize) = try SymbolTerm.parseExponent("1/2");
+    const exp4: Exponent = try SymbolTerm.parseExponent("1/2");
     try testing.expectEqual(1, exp4.num);
     try testing.expectEqual(2, exp4.denum);
 
     // Case m^1/2
-    const exp5: Fraction(isize) = try SymbolTerm.parseExponent("^1/2");
+    const exp5: Exponent = try SymbolTerm.parseExponent("^1/2");
     try testing.expectEqual(1, exp5.num);
     try testing.expectEqual(2, exp5.denum);
 
     // Case m-1/2
-    const exp6: Fraction(isize) = try SymbolTerm.parseExponent("-1/2");
+    const exp6: Exponent = try SymbolTerm.parseExponent("-1/2");
     try testing.expectEqual(-1, exp6.num);
     try testing.expectEqual(2, exp6.denum);
 
     // Case m^-1/2
-    const exp7: Fraction(isize) = try SymbolTerm.parseExponent("^-1/2");
+    const exp7: Exponent = try SymbolTerm.parseExponent("^-1/2");
     try testing.expectEqual(-1, exp7.num);
     try testing.expectEqual(2, exp7.denum);
 }

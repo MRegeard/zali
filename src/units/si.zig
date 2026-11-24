@@ -84,7 +84,7 @@ pub const W: Unit = defUnitFromUnit(J.div(s), 1, .initUniqueSymbol("W"));
 
 // Electrical
 //
-pub const A: Unit = .init(dim.electricCurrent, 1, .initUniqueSymbol("A"));
+pub const A: Unit = .init(dim.electric_current, 1, .initUniqueSymbol("A"));
 pub const C: Unit = defUnitFromUnit(A.mul(s), 1, .initUniqueSymbol("C"));
 pub const V: Unit = defUnitFromUnit(J.div(C), 1, .initUniqueSymbol("V"));
 pub const Ohm: Unit = defUnitFromUnit(V.div(A), 1, .initUniqueSymbol("Ohm"));
@@ -99,7 +99,7 @@ pub const H: Unit = defUnitFromUnit(Wb.div(A), 1, .initUniqueSymbol("H"));
 
 // Illumination
 //
-pub const cd: Unit = .init(dim.luminousIntensity, 1, .initUniqueSymbol("cd"));
+pub const cd: Unit = .init(dim.luminous_intensity, 1, .initUniqueSymbol("cd"));
 pub const lm: Unit = defUnitFromUnit(cd.mul(sr), 1, .initUniqueSymbol("lm"));
 pub const lx: Unit = defUnitFromUnit(lm.div(m.pow(2)), 1, .initUniqueSymbol("lx"));
 
