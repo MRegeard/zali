@@ -33,15 +33,8 @@ pub fn Constant(comptime T: type, comptime U: Unit) type {
 /// declaration. Useful when you have a `Quantity` type in hand and want the constant
 /// type that would hold it.
 pub fn ConstantFromQuantity(comptime quantity_type: type) type {
-    const T: type = blk: {
-        for (@typeInfo(quantity_type).@"struct".fields) |field| {
-            if (std.mem.eql(u8, "value", field.name)) {
-                break :blk field.type;
-            }
-        }
-    };
-    const U: Unit = quantity_type.unit;
-    return Constant(T, U);
+    u.utils.assertIsQuantity(quantity_type);
+    return Constant(quantity_type.value_type, quantity_type.unit);
 }
 
 test "ConstantFromQuantity" {
