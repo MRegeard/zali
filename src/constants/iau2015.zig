@@ -11,7 +11,8 @@ const arcsec_in_deg: f64 = 1.0 / 3600.0;
 //
 pub const au: Constant(f64, units.m) = .init(1.49597870700e11, "Astronomical Unit", .SI);
 pub const pc: Constant(f64, units.m) = .init(au.quantity.value / degToRad(arcsec_in_deg), "Parsec", .SI);
-pub const kpc: Constant(f64, units.m) = .init(1000 * pc.quantity.value, "Kiloparsec", .SI);
+//NOTE: We do not use `pc` in the `kpc` definition for rounding precision compared to `astropy`.
+pub const kpc: Constant(f64, units.m) = .init(1000 * au.quantity.value / degToRad(arcsec_in_deg), "Kiloparsec", .SI);
 pub const L_bol0: Constant(f64, units.W) = .init(3.0128e28, "Luminosity for absolute bolometric magnitude 0", .SI);
 
 // Solar quantities
